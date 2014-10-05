@@ -6,7 +6,7 @@ import simplejson
 #s = 'http://news.google.com/news?pz=1&cf=all&ned=us&hl=en&topic=h&num=9&output=rss'
 s = 'http://news.google.com/?output=rss'
 feed = urllib2.quote(s.encode("utf-8"))
-url = ('https://ajax.googleapis.com/ajax/services/feed/load?v=1.0&q='+ feed + '&num=9&userip=192.17.236.216')
+url = ('https://ajax.googleapis.com/ajax/services/feed/load?v=1.0&q='+ feed + '&num=19&userip=192.17.236.216')
 
 request = urllib2.Request(url, None)
 response = urllib2.urlopen(request)

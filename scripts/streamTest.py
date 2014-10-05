@@ -7,6 +7,8 @@ class MyStreamer(TwythonStreamer):
 		if 'text' in data:
 			#print data
 			print data['text'].encode('utf-8')
+			print data
+			exit(-1)
 
 	def on_error(self, status_code, data):
 		print status_code
@@ -24,4 +26,4 @@ APP_KEY = 'PoLS6KUqbS7gZE0dtmgeUIPhQ'
 APP_SECRET = 'YeBvKvjDHV7bbxjTuCtsomsMBDnAyiq0ueCTrGFZXUASgOMZFj'
 stream = MyStreamer(APP_KEY, APP_SECRET,
 		                    OAUTH_TOKEN, OAUTH_TOKEN_SECRET)
-stream.statuses.filter(track='iwatch')
+stream.statuses.filter(track='ebola')
