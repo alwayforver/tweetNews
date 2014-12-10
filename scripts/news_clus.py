@@ -17,6 +17,7 @@ from time import time
 
 import numpy as np
 import sys,os
+import codecs
 # import for db
 import django
 local_base = '/home/jwang112/projects/tweet/demoBasic/tweenews'
@@ -74,12 +75,13 @@ op.add_option("--verbose",
               help="Print progress reports inside k-means algorithm.")
 
 (opts, args) = op.parse_args()
-if len(args) != 3:
-    op.error("this script takes 3 arguments: news_input num_clus all/text/snippets")
+if len(args) != 4:
+    op.error("this script takes 3 arguments: news_input num_clus all/text/snippets outfile")
     sys.exit(1)
 
-file = open(sys.argv[1])
+file = codecs.open(sys.argv[1], encoding = 'utf-8')
 dataop = sys.argv[3]
+outfile = codecs.open(sys.argv[4], 'w', encoding = 'utf-8')
 #data = file.readlines()
 
 lines = []
@@ -106,6 +108,7 @@ t0 = time()
 X = vectorizer.fit_transform(lines)
 print("done in %fs" % (time() - t0))
 print("n_samples: %d, n_features: %d" % X.shape)
+outfile.write("n_samples: %d, n_features: %d \n" % X.shape)
 print()
 
 #if opts.n_components:
@@ -139,6 +142,7 @@ else:
                 verbose=opts.verbose)
 
 print("Clustering sparse data with %s" % km)
+outfile.write("Clustering sparse data with %s\n" % km)
 t0 = time()
 km.fit(X)
 print("done in %0.3fs" % (time() - t0))
@@ -152,28 +156,39 @@ for i in range(len(labels)):
 
 if not (opts.n_components or opts.use_hashing):
     print("Top terms per cluster:")
+    outfile.write("Top terms per cluster:\n")
     order_centroids = km.cluster_centers_.argsort()[:, ::-1]
     terms = vectorizer.get_feature_names()
     for i in range(true_k):
         print("Cluster %d:" % i, end='')
+        outfile.write("Cluster %d:" % i)
         for ind in order_centroids[i, :10]:
             print(' %s' % terms[ind], end='')
+            outfile.write(' %s' % terms[ind])
         print()
         tweets = []
         for doc in docdic[i]:
             print(lines[doc].split('\t')[1])
+            outfile.write(lines[doc].split('\t')[1])
+            outfile.write('\n')
             print("-------")
+            outfile.write("-------\n")
             newsID = ind2ID[doc]
             tweets = tweets + getRelTweets(newsID)
         if tweets:
-            topTweets = rankTweets(tweets, order_centroids[i,:], vectorizer.vocabulary_)
+            topTweets = rankTweets(tweets, km.cluster_centers_[i,:], vectorizer.vocabulary_)
             print("*******")
+            outfile.write("*******top tweets:********\n")
             print("top tweets:")
             for t in topTweets:
                 print(t)
+                outfile.write(t)
+                outfile.write('\n-------\n')
                 print("-------")
         else:
             print("no tweets retrieved")
+            outfile.write("no tweets retrieved\n")
         print("=========")
+        outfile.write("=========\n\n")
         print()
         
