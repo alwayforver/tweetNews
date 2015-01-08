@@ -16,6 +16,8 @@ import sys
 from time import time
 
 import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.neighbors import kneighbors_graph
 import sys,os
 import codecs
 import glob
@@ -53,25 +55,20 @@ def readfile(file,dataop,vocab):
     print()
     return (X,lines,vectorizer,ind2ID)
 def getCluster(X,k,opts):
-    if opts.minibatch:
-        km = MiniBatchKMeans(n_clusters=k, init='k-means++', n_init=100,
-                             init_size=1000, batch_size=1000, verbose=opts.verbose)
-    else:
-        km = KMeans(n_clusters=k, init='k-means++', max_iter=100, n_init=100,
-                    verbose=opts.verbose)
-    
-    print("Clustering sparse data with %s" % km)
+    knn_graph = kneighbors_graph(X, 30)
+    aggl = AgglomerativeClustering(linkage='ward', connectivity=knn_graph, n_clusters=k)
+    print("Clustering sparse data with %s" % aggl)
     t0 = time()
-    km.fit(X)
+    aggl.fit(X)
     print("done in %0.3fs" % (time() - t0))
     print()
     
-    labels = km.labels_
+    labels = aggl.labels_
     docdic = {}
     for i in range(len(labels)):
         docdic[labels[i]] = docdic.get(labels[i],set())
         docdic[labels[i]].add(i)    
-    return (km,docdic)
+    return (aggl,docdic)
 def getRelTweets(newsID):
     #n = News.objects.filter(ID=newsID)
     #if n.count() > 0:
@@ -123,12 +120,9 @@ def getRelTweets(newsID):
             #    tw_text = tw_text[:s] + tmp[e:]
             #else:
             #    tw_text = tw_text[:s] + tmp[e+1:]
-        
-        #remove http
-        #tw_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', tw_text)
-        if "http" not in  tw_text:
-            tweets.add(tw_text)
+        tw_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', tw_text)
 
+        tweets.add(tw_text)
         #tweet = Tweet(ID=int(tw_id_str), user=int(user_id_str) ,raw_text = tw_text,created_at = tw_created_at_tz, local_time_zone = tw_local_timezone, retweet_count = tw_retweet_count,\
         #hash_tags = tag_text)
     t.close()
@@ -146,37 +140,37 @@ def printCluster(i,lines,docdic,km,order_centroids,terms,outfile,ind2ID,t_topK,v
     if not (opts.n_components or opts.use_hashing):
         print("Cluster %d:" % i, end='')
         outfile.write("Cluster %d:" % i)
-        for ind in order_centroids[i, :10]:
-            print(' %s' % terms[ind], end='')
-            outfile.write(' %s' % terms[ind])
+    #    for ind in order_centroids[i, :10]:
+    #        print(' %s' % terms[ind], end='')
+    #        outfile.write(' %s' % terms[ind])
         print()
         outfile.write('\n')
         #tweets = []
-        tweets = set()
+    #    tweets = set()
         for doc in docdic[i]:
-            print(lines[doc].split('\t')[1])
-            outfile.write(lines[doc].split('\t')[1])
+            print(lines[doc].split('\t')[2])
+            outfile.write(lines[doc].split('\t')[2])
             outfile.write('\n')
             print("-------")
             outfile.write("-------\n")
             newsID = ind2ID[doc]
-            if getRelTweets(newsID):
+    #        if getRelTweets(newsID):
 #                tweets = tweets + getRelTweets(newsID)
-                tweets = tweets | getRelTweets(newsID)
-        tweets = list(tweets)
-        if tweets:
-            topTweets = rankTweets(tweets, km.cluster_centers_[i,:], vectorizer.vocabulary_,t_topK)
-            print("*******")
-            outfile.write("*******top tweets:********\n")
-            print("top tweets:")
-            for t in topTweets:
-                print(t)
-                outfile.write(t)
-                outfile.write('\n-------\n')
-                print("-------")
-        else:
-            print("no tweets retrieved")
-            outfile.write("no tweets retrieved\n")
+    #            tweets = tweets | getRelTweets(newsID)
+    #    tweets = list(tweets)
+    #    if tweets:
+    #        topTweets = rankTweets(tweets, km.cluster_centers_[i,:], vectorizer.vocabulary_,t_topK)
+    #        print("*******")
+    #        outfile.write("*******top tweets:********\n")
+    #        print("top tweets:")
+    #        for t in topTweets:
+    #            print(t)
+    #            outfile.write(t)
+    #            outfile.write('\n-------\n')
+    #            print("-------")
+    #    else:
+    #        print("no tweets retrieved")
+    #        outfile.write("no tweets retrieved\n")
         print("=========")
         outfile.write("=========\n")
         print()
@@ -184,13 +178,17 @@ def printCluster(i,lines,docdic,km,order_centroids,terms,outfile,ind2ID,t_topK,v
 
 def process(X,k,lines,vectorizer,outfile,ind2ID,t_topK,opts):
     (km,docdic) = getCluster(X,k,opts)
-    order_centroids = km.cluster_centers_.argsort()[:, ::-1]
-    terms = vectorizer.get_feature_names()
-
+#    order_centroids = km.cluster_centers_.argsort()[:, ::-1]
+#    terms = vectorizer.get_feature_names()
+    order_centroids=None
+    terms=None
     for i in range(k):
         #outfile.write('%s' % maxDist)
         printCluster(i,lines,docdic,km,order_centroids,terms,outfile,ind2ID,t_topK,vectorizer,opts)
         outfile.write('*****************\n')
+    print(km.n_leaves_)
+    print(km.n_components_)
+    print(km.children_)
 
 #################################################################################        
 
@@ -235,4 +233,4 @@ if __name__ == "__main__":
     #file1.seek(0)
     #file2.seek(0)
     #(X,lines,vectorizer) = readfile(file,dataop,vocab)
-    process(X,k,lines,vectorizer,outfile,ind2ID,t_topK,opts)
+    process(X.toarray(),k,lines,vectorizer,outfile,ind2ID,t_topK,opts)
