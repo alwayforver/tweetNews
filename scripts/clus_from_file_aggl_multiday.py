@@ -154,7 +154,7 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
             #    tw_text = tw_text[:s] + tmp[e+1:]
         # remove url    
         #tw_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', tw_text)
-        if "http" in raw_text and "RT @" not in raw_text \
+        if "http" not in raw_text and "RT @" not in raw_text \
             and ID not in tweetIDset and raw_text not in tweetSet:
             tweet = bk.Tweet(ID,raw_text,created_at,is_retweet,retweet_count,hash_tags)
             tweetsObj.append(tweet)
