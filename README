@@ -4,3 +4,4 @@ compare two days news
 python news_clus_2day.py /home/wtong8/NewsTwitter/news/2014-11-17.txt /home/wtong8/NewsTwitter/news/2014-11-18.txt 50 50 text out1117_1118.50.50
 python news_clus_from_file_lda.py /home/wtong8/NewsTwitter/news/2014-11-17.txt tmp 40 1 all tmp.txt
 python news_clus_from_file_aggl_multiday.py /home/wtong8/NewsTwitter/news/ 2015-01-01 2015-01-04 tmp 50 1 all tmp50.txt
+time python clus_from_file_aggl_multiday.py /home/wtong8/NewsTwitter/news/ 2014-12-20 2015-01-04 /home/wtong8/NewsTwitter/tweets/ 20 1000 text outauto1225_0104.txt
