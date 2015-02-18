@@ -13,7 +13,7 @@ def getentities(text):
         entities = {}
         if 'Resources' in results:
             for result in results['Resources']:
-                entity = result['@surfaceForm']
+                entity = result['@URI'].split('/')[-1].replace('_', ' ')
                 types = result['@types']
                 if 'DBpedia:Person' in types:
                     entity += ':person'
