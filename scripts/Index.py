@@ -6,49 +6,54 @@ from whoosh.qparser import QueryParser
 import codecs
 import os
 
-def CreateIndex(tweets_folder, index_folder):
+def CreateIndex(tweet_folder, index_folder):
 	index = open_dir(index_folder)
 	writer = index.writer()
 	
-	files = os.listdir('tweets')
+	files = os.listdir(tweet_folder)
 	for file in files:
-		input = codecs.open('tweets/' + file, encoding = 'utf-8')
+		input = open(tweet_folder + file)
 		lines = input.readlines()
+		print tweet_folder + file
 	
 		line_number = 0
 		for line in lines:
+			line = line.decode('utf-8')
 			info = line.strip().split('\t')
-			if len(info) <= 1:
+			if len(info) < 2:
 				line_number += 1
 				continue
-	
+
 			tweet_text = info[1]
-			urls = info[3]
-			if urls != '':
-				urls = urls.split(',')
-				for url in urls:
-					tweet_text = tweet_text.replace(url, '')
-	
-			writer.add_document(tweet = tweet_text, path = ('tweets/' + file).decode('utf-8'), line = line_number)
+			create_time = info[2]
+			create_time = create_time[:19] + ' ' + create_time[-4:]
+
+			retweet_num = info[13].strip()
+			if retweet_num == '':
+				retweet_num = '0'
+				
+			writer.add_document(tweet = tweet_text, path = ('tweets/' + file).decode('utf-8'), line = line_number, time = create_time, retweet = retweet_num)
+
 			line_number += 1
-	
+
 	writer.commit()
 
+#To use this function, you need to create an index object first using
+#index = whoosh.index.open_dir(index_folder)
+#and then pass the index to the function Searcu(), together with a keyword list
 
-def Search():
-	index = open_dir('index')
+#The reason why I don't open an index in the function is for efficiency. I don't want to reload the index again and again.
+def Search(index, keywords):
 	searcher = index.searcher()
-	query = QueryParser('tweet', index.schema).parse('other')
+	query = QueryParser('tweet', index.schema).parse(' AND '.join(keywords))
 	results = searcher.search(query, limit = None)
-	results = sorted(results, key = lambda k: k['path'])
-	print results
+	return results
 
 if __name__ == '__main__':
 	index_folder = 'index'
-	tweets_folder = 'tweets/'
+	tweet_folder = 'tweets/'
 	start = '2014-12-20'
-	end = '2014-12-20'
-	Search()
+	end = '2015-01-04'
 
 	if len(sys.argv) > 1:
 		start = sys.argv[1]
@@ -56,7 +61,7 @@ if __name__ == '__main__':
 
 	if not os.path.exists(index_folder):
 		os.makedirs(index_folder)
-		schema = Schema(tweet = TEXT, path = ID (stored = True), line = NUMERIC (stored = True))
+		schema = Schema(tweet = TEXT (stored = True), path = STORED, line = STORED, time = STORED, retweet = STORED)
 		index = create_in(index_folder, schema)
 
 	start = datetime.date(int(start.split('-')[0]), int(start.split('-')[1]), int(start.split('-')[2]))
@@ -64,8 +69,8 @@ if __name__ == '__main__':
 
 	date = start
 	while date <= end:
-		if os.path.exists(tweets_folder):
-			CreateIndex(tweets_folder, index_folder)
+		if os.path.exists(tweet_folder + str(date)):
+			CreateIndex(tweet_folder + str(date) + '/', index_folder)
 
 		date += datetime.timedelta(days = 1)
 
