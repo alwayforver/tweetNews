@@ -10,30 +10,44 @@ def getentities(text):
     response = requests.post(url, data=params, headers=reqheaders)
     try:
         results = response.json()
-        entities = {}
+        entities_per = {}
+        entities_loc = {}
+        entities_org = {}
+        entities_all = {}
+        entity_surface = {}
         if 'Resources' in results:
             for result in results['Resources']:
-                entity = result['@surfaceForm']
+                entity = result['@URI'].split('/')[-1]
+                surface = result['@surfaceForm']
                 types = result['@types']
                 if 'DBpedia:Person' in types:
                     entity += ':person'
+                    entities_per[entity] = entities_per.get(entity,0)+1
                 elif 'DBpedia:Place' in types:
                     entity += ':place'
+                    entities_loc[entity] = entities_loc.get(entity,0)+1
                 elif 'DBpedia:Organisation' in types:
                     entity += ':org'
-                if entity in entities:
-                    entities[entity] += 1
+                    entities_org[entity] = entities_org.get(entity,0)+1
+                entities_all[entity] = entities_all.get(entity,0)+1
+                if entity in entity_surface:
+                    entity_surface[entity].add(surface)
                 else:
-                    entities[entity] = 1
-        entities_string = ''
-        for (entity, count) in entities.items():
-            entities_string += entity + ':' + str(count) + '\t'
+                    entity_surface[entity] = set()
+                    entity_surface[entity].add(surface)
+
+#        entities_string = ''
+#        for (entity, count) in entities.items():
+#            entities_string += entity + ':' + str(count) + '\t'
             
-        return entities_string
+#        return entities_string
+        
+        return entities_per,entities_loc,entities_org,entities_all,entity_surface
     except:
         print text
         print "dbpedia error: "+response.text
-        return "dbpedia error"
+#        return "dbpedia error"
+        return({},{},{},{},{})
 class News:
     def __init__(self,ID,title,raw_text,snippets,key_word,source,created_at,dtpure):
         self.ID = ID
@@ -44,6 +58,9 @@ class News:
         self.source = source
         self.created_at = dt.strptime(created_at[5:-6],"%d %b %Y %H:%M:%S")
         self.dtpure = dtpure
+        self.entities = getentities(self.raw_text)
+        print ID
+    entities = ({},{},{},{},{})
     local_time_zone = None
     url = None
     def _tz(self, tz):    
@@ -57,9 +74,10 @@ class News:
             +("".join(c for c in self.source if c not in (string.punctuation))).replace(' ', '_')
     def relTweets(self,prefixDIR):
         return []
-    def entities(self):
-        return getentities(self.title) + " || "+ getentities(self.raw_text)
-
+#    def entities(self):
+#        #return getentities(self.title) + " || "+ getentities(self.raw_text)
+#        print self.ID
+#        return getentities(self.raw_text)
 class Tweet:
     def __init__(self,ID,raw_text,created_at,is_retweet,retweet_count,hash_tags):
         self.ID = ID
