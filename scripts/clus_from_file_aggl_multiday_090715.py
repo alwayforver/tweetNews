@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -34,9 +33,9 @@ def readfile(file,dataop,count,ind2obj,dtpure,lines):
 #    ind2obj = {}
 #    count = 0
     for line in file:
-        if len(line.strip().split("\t")) != 9:
+        if len(line.strip().split("\t")) != 10: #### after dbpedia entities are stored
             continue
-        ID,url,title,source,created_at,authors,key_word,snippets,raw_text = line.strip().split("\t")
+        ID,url,title,source,created_at,authors,key_word,snippets,raw_text,entities = line.strip().split("\t")
         ID = int(ID)
         ind2obj[count] = bk.News(ID,title,raw_text,snippets,key_word,source,created_at,dtpure)
         if dataop == "all":
@@ -154,7 +153,9 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
             #    tw_text = tw_text[:s] + tmp[e+1:]
         # remove url    
         #tw_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', tw_text)
-        if "http" not in raw_text and "RT @" not in raw_text \
+
+        # if "http" not in raw_text and "RT @" not in raw_text \
+        if  "RT @" not in raw_text \
             and ID not in tweetIDset and raw_text not in tweetSet:
             tweet = bk.Tweet(ID,raw_text,created_at,is_retweet,retweet_count,hash_tags)
             tweetsObj.append(tweet)
@@ -199,8 +200,10 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
         tweetsObj = []
     #    tweets = set()
         newsList = [ind2obj[ind] for ind in clus2doc[i]]
+        """
         newsEntityDict = {}
         tweetsEntityDict = {}
+        """
         for news in sorted(newsList, key=operator.attrgetter('created_at')):
 #        for ind in clus2doc[i]:
 #            news = ind2obj[ind]
@@ -209,7 +212,7 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
             #print(news.entities())
             outfile.write(str(news.created_at)+"\t"+news.title+"\n")
             #outfile.write(news.entities()+"\n")
-
+            """
             entities = news.entities().strip().split('\t')
             for entity in entities:
                 count = entity.split(':')[-1]
@@ -218,7 +221,7 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
                     newsEntityDict[words] += int(count)
                 else:
                     newsEntityDict[words] = int(count)
-
+            """
             #print(lines[ind].split('\t')[2])
             #outfile.write(lines[doc].split('\t')[2])
             #outfile.write('\n')
@@ -245,11 +248,11 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
             outfile.write("\n*******top tweets:********total tweets: " + str(len(tweets))+"\n")
             print("top tweets:")
             for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')):
-                print(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
+                print(str(t.ID) +"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
                 #print(t.entities())
-                outfile.write(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
+                outfile.write(str(t.ID) +"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
                 #outfile.write(t.entities())
-
+                """
                 entities = t.entities().strip().split('\t')
                 for entity in entities:
                     count = entity.split(':')[-1]
@@ -258,13 +261,13 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
                         tweetsEntityDict[words] += int(count)
                     else:
                         tweetsEntityDict[words] = int(count)
-
+                """
                 outfile.write('\n-------\n')
                 print("-------")
         else:
             print("no tweets retrieved")
             outfile.write("no tweets retrieved\n")
-
+        """
         news_entities = ''
         for entity, count in newsEntityDict.items():
             news_entities += entity + ':' + str(count) + '\t'
@@ -282,7 +285,7 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
         print(tweets_entities)
         outfile.write('tweets entities\n')
         outfile.write(tweets_entities + '\n')
-
+        """
 
         print("=========")
         outfile.write("=========\n\n")
@@ -353,7 +356,7 @@ if __name__ == "__main__":
             fileDate = s_dt + tdelta(days = x)
             dtpure = fileDate.strftime("%Y-%m-%d")
             filename = newsPre + dtpure +".txt"
-            print filename
+            print(filename)
             if os.path.isfile(filename):
                 file = codecs.open(filename, encoding = 'utf-8')
                 count = readfile(file,dataop,count,ind2obj,dtpure,lines)

@@ -4,7 +4,7 @@ import os
 import requests
 import json
 def getentities(text):
-    url = 'http://localhost:2222/rest/annotate'    #local service
+    url = 'http://dmserv2.cs.illinois.edu:2222/rest/annotate'    #local service
     params = {'confidence': 0.5, 'support': 10, 'text': text.encode('ascii','ignore')}
     reqheaders = {'accept': 'application/json'}
     response = requests.post(url, data=params, headers=reqheaders)
@@ -30,11 +30,9 @@ def getentities(text):
                     entity += ':org'
                     entities_org[entity] = entities_org.get(entity,0)+1
                 entities_all[entity] = entities_all.get(entity,0)+1
-                if entity in entity_surface:
-                    entity_surface[entity].add(surface)
-                else:
-                    entity_surface[entity] = set()
-                    entity_surface[entity].add(surface)
+                if entity not in entity_surface:
+                    entity_surface[entity] = {}
+                entity_surface[entity][surface] = entity_surface[entity].get(surface,0) + 1
 
 #        entities_string = ''
 #        for (entity, count) in entities.items():
@@ -58,8 +56,8 @@ class News:
         self.source = source
         self.created_at = dt.strptime(created_at[5:-6],"%d %b %Y %H:%M:%S")
         self.dtpure = dtpure
-        self.entities = getentities(self.raw_text)
-        print ID
+        #self.entities = getentities(self.raw_text)  ##################
+        #print ID
     entities = ({},{},{},{},{})
     local_time_zone = None
     url = None
@@ -74,10 +72,12 @@ class News:
             +("".join(c for c in self.source if c not in (string.punctuation))).replace(' ', '_')
     def relTweets(self,prefixDIR):
         return []
-#    def entities(self):
-#        #return getentities(self.title) + " || "+ getentities(self.raw_text)
-#        print self.ID
-#        return getentities(self.raw_text)
+    def func_entities(self):
+        #return getentities(self.title) + " || "+ getentities(self.raw_text)
+        print self.ID
+        return getentities(self.raw_text)
+
+
 class Tweet:
     def __init__(self,ID,raw_text,created_at,is_retweet,retweet_count,hash_tags):
         self.ID = ID

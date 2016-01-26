@@ -1,6 +1,3 @@
-from __future__ import print_function
-
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -42,9 +39,9 @@ def readfile(file,dataop,count,ind2obj,dtpure,lines):
         if dataop == "all":
             lines.append(line)
         if dataop == "text":
-            lines.append('\t'.join([url,title,key_word,snippets,raw_text]))
+            lines.append('\t'.join([title,key_word,snippets,raw_text]))
         if dataop == "snippets":
-            lines.append('\t'.join([url,title,key_word,snippets]))
+            lines.append('\t'.join([title,key_word,snippets]))
         count += 1
     return count
 def getVec(lines,vocab):
@@ -61,7 +58,6 @@ def getVec(lines,vocab):
     X = vectorizer.fit_transform(lines)
     print("done in %fs" % (time() - t0))
     print("n_samples: %d, n_features: %d" % X.shape)
-    outfile.write("n_samples: %d, n_features: %d \n" % X.shape)
     print()
     return (X,vectorizer)
 def getCluster(X,k,M,opts):
@@ -73,21 +69,27 @@ def getCluster(X,k,M,opts):
 #    print("knn graph done in %0.3fs" % (time() - t0))
 #    outfile.write("knn graph done in %0.3fs\n" % (time() - t0))
 #    aggl = AgglomerativeClustering(linkage='ward', connectivity=knn_graph, n_clusters=k)
-    aggl = AgglomerativeClustering(linkage='ward', n_clusters=k)
-    print("Clustering sparse data with %s" % aggl)
-    outfile.write("Clustering sparse data with %s\n" % aggl)
+    if opts.minibatch:
+        km = MiniBatchKMeans(n_clusters=k, init='k-means++', n_init=50,
+                             init_size=1000, batch_size=1000, verbose=opts.verbose)
+    else:
+        km = KMeans(n_clusters=k, init='k-means++', max_iter=100, n_init=50,
+                    verbose=opts.verbose)
+    #aggl = AgglomerativeClustering(linkage='ward', n_clusters=k)
+    print("Clustering sparse data with %s" % km)
+#    outfile.write("Clustering sparse data with %s\n" % aggl)
     t0 = time()
-    aggl.fit(X)
+    km.fit(X)
     print("done in %0.3fs" % (time() - t0))
-    outfile.write("clustering done in %0.3fs\n" % (time() - t0))
+#    outfile.write("clustering done in %0.3fs\n" % (time() - t0))
     print()
     
-    labels = aggl.labels_
+    labels = km.labels_
     clus2doc = {}
     for i in range(len(labels)):
         clus2doc[labels[i]] = clus2doc.get(labels[i],set())
         clus2doc[labels[i]].add(i)    
-    return (aggl,clus2doc,knn_graph)
+    return (km,clus2doc,knn_graph)
 def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
     #n = News.objects.filter(ID=newsID)
     #if n.count() > 0:
@@ -184,8 +186,6 @@ def rankTweets(tweets, tweetsObj, newsVec, vocab, t_topK):
     for i in tweetsInd:
         topTweetsScore[tweetsObj[i].ID] = scores[i]
     return topTweetsObj,topTweetsScore
-
-
 def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2obj,t_topK,vectorizer,tweetPre,opts):
     if not (opts.n_components or opts.use_hashing):
         print("Cluster %d:" % i, end='')
@@ -206,19 +206,9 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
 #            news = ind2obj[ind]
 
             print(str(news.created_at)+"\t"+news.title)
-            #print(news.entities())
+            print(news.entities())
             outfile.write(str(news.created_at)+"\t"+news.title+"\n")
-            #outfile.write(news.entities()+"\n")
-
-            entities = news.entities().strip().split('\t')
-            for entity in entities:
-                count = entity.split(':')[-1]
-                words = entity.replace(':' + count, '')
-                if words in newsEntityDict:
-                    newsEntityDict[words] += int(count)
-                else:
-                    newsEntityDict[words] = int(count)
-
+            outfile.write(news.entities()+"\n")
             #print(lines[ind].split('\t')[2])
             #outfile.write(lines[doc].split('\t')[2])
             #outfile.write('\n')
@@ -246,44 +236,14 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
             print("top tweets:")
             for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')):
                 print(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
-                #print(t.entities())
+                print(t.entities())
                 outfile.write(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
-                #outfile.write(t.entities())
-
-                entities = t.entities().strip().split('\t')
-                for entity in entities:
-                    count = entity.split(':')[-1]
-                    words = entity.replace(':' + count, '')
-                    if words in tweetsEntityDict:
-                        tweetsEntityDict[words] += int(count)
-                    else:
-                        tweetsEntityDict[words] = int(count)
-
+                outfile.write(t.entities())
                 outfile.write('\n-------\n')
                 print("-------")
         else:
             print("no tweets retrieved")
             outfile.write("no tweets retrieved\n")
-
-        news_entities = ''
-        for entity, count in newsEntityDict.items():
-            news_entities += entity + ':' + str(count) + '\t'
-        print('news entities')
-        print(news_entities)
-        print("-------")
-        outfile.write('news entities\n')
-        outfile.write(news_entities + '\n')
-        outfile.write('-------\n')
-
-        tweets_entities = ''
-        for entity, count in tweetsEntityDict.items():
-            tweets_entities += entity + ':' + str(count) + '\t'
-        print('tweets entities')
-        print(tweets_entities)
-        outfile.write('tweets entities\n')
-        outfile.write(tweets_entities + '\n')
-
-
         print("=========")
         outfile.write("=========\n\n")
         print()
@@ -303,6 +263,46 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
 #    print(clusModel.children_)
 
 #################################################################################        
+def getEntMat(ind2obj,resind,ent_count,thresh):
+    row = []
+    col = []
+    data = []
+    terms = {}
+    termList = []
+    count = 0
+    for i in ind2obj:
+        res = ind2obj[i].entities
+                                                                                                 
+        for e in res[resind]:
+            if ent_count[e] <thresh:
+                continue
+            if e not in terms:
+                terms[e] = count
+                termList.append(e)
+                count += 1
+                
+            row.append(i)
+            col.append(terms[e])
+            data.append(res[resind][e])
+    row = np.array(row)
+    col = np.array(col)
+    data = np.array(data,dtype=float)
+    entMat = coo_matrix((data,(row,col)),shape=(len(ind2obj),count))
+    return entMat,termList
+
+def getSurface(ind2obj):
+    ent_surf = {}
+    for i in ind2obj:
+        res = ind2obj[i].entities
+        entity_surface = res[4]
+        for e in entity_surface:
+            if e not in ent_surf:
+                ent_surf[e] = {}
+            surfs = entity_surface[e]
+            for sf in surfs:
+                ent_surf[e][sf] = ent_surf[e].get(sf,0) + surfs[sf]
+    return ent_surf
+
 
 if __name__ == "__main__":
     #logging.basicConfig(level=logging.INFO,
@@ -329,23 +329,24 @@ if __name__ == "__main__":
                   help="Print progress reports inside k-means algorithm.")
     
     (opts, args) = op.parse_args()
-    if len(args) != 8:
-        op.error("this script takes 8 arguments: news_input_prefix start_date end_date tweets_input_prefix num_clus t_topK all/text/snippets outfile")
+    if len(args) != 9:
+        op.error("this script takes 9 arguments: news_input_prefix start_date end_date tweets_input_prefix num_clus t_topK all/text/snippets outfile thresh")
         sys.exit(1)
     
     newsPre = sys.argv[1]
     s_dt = dt.strptime(sys.argv[2],"%Y-%m-%d")
     e_dt = dt.strptime(sys.argv[3],"%Y-%m-%d")
     tweetPre = sys.argv[4]
-    k = int(sys.argv[5])
+    K = int(sys.argv[5])
     t_topK = int(sys.argv[6])
     dataop = sys.argv[7]
     outfile = codecs.open(sys.argv[8], 'w', encoding = 'utf-8')
+    thresh = int(sys.argv[9])
     knnNum = 30
 
 ############## readfile news. Two copies: lines (for scikit-learn's convenience) and objects (for later print use)
     numDays = (e_dt - s_dt).days
-    k = 20*(numDays+1)
+#    K = 20*(numDays+1)
     count = 0
     lines = []
     ind2obj = {}
@@ -353,15 +354,122 @@ if __name__ == "__main__":
             fileDate = s_dt + tdelta(days = x)
             dtpure = fileDate.strftime("%Y-%m-%d")
             filename = newsPre + dtpure +".txt"
-            print filename
             if os.path.isfile(filename):
                 file = codecs.open(filename, encoding = 'utf-8')
                 count = readfile(file,dataop,count,ind2obj,dtpure,lines)
     vocab = None
 ############# clustering on news
+    ent_surf = getSurface(ind2obj)
+    ent_count = {}
+    for e in ent_surf:
+        surfs = ent_surf[e]
+        count = sum(surfs.values())
+        ent_count[e] = count
+        outfile.write(str(count))
+        outfile.write("\t"+e)
+        for sf in surfs:
+            outfile.write("\t"+sf+":\t"+str(surfs[sf]))
+        outfile.write("\n")
     X,vectorizer = getVec(lines,vocab)
+    terms = vectorizer.get_feature_names()
+    DT = []
+    titles = []
+
+    for i in ind2obj:
+#        curr_t = (ind2obj[i].created_at - s_dt).days+2
+        curr_t = (ind2obj[i].created_at - s_dt).total_seconds()
+        DT.append(curr_t)
+        titles.append(ind2obj[i].title)
+
+    Xp,termsp = getEntMat(ind2obj,0,ent_count,thresh)
+    print("per entity done")
+    Xl,termsl = getEntMat(ind2obj,1,ent_count,thresh)
+    print("loc entity done")
+    Xo,termso = getEntMat(ind2obj,2,ent_count,thresh)
+    print("org entity done")
+    X_all,terms_all = getEntMat(ind2obj,3,ent_count,thresh)
+    print("all entity done")
+            
     #clus2doc index of newsID
-    clusModel,clus2doc,knn_graph = getCluster(X.toarray(),k,knnNum,opts)
+    clusModel,clus2doc,knn_graph = getCluster(X,K,knnNum,opts)
+    labels = clusModel.labels_
+    centers = clusModel.cluster_centers_
+    for i in clus2doc:
+        outfile.write(str(len(clus2doc[i]))+"\t")
+ 
+    nDocs,nWords = X.shape
+    Pz_d_km = np.zeros((K,nDocs))
+    for i in range(nDocs):
+        Pz_d_km[labels[i],i] = 1
+    Pz_d_km = Pz_d_km +0.01;
+    Pz_d_km = Pz_d_km / np.tile(sum(Pz_d_km),(K,1))
+    C = centers.T+1/nWords/nWords
+    Pw_z_km = C/np.tile(sum(C),(nWords,1))
+    
+    Learn = (1,10)
+    X = X.tocoo()
+    t0 = time()
+    Pw_z,Pz_d,Pd,Li,Learn = pLSA.pLSA(X,K,Learn,Pz_d_km,Pw_z_km)
+    print("pLSA done in %fs" % (time() - t0))
+# print topics
+    M = 50
+    N = 10
+    wordInd = Pw_z.argsort(axis=0)[::-1,:]
+    docInd = Pz_d.argsort()[:,::-1]
+    for i in range(K):
+        sys.stdout.write("topic "+str(i))
+        for j in range(M):
+            sys.stdout.write('\t'+terms[wordInd[j,i]])
+        sys.stdout.write('\n')
+        for k in range(N):
+            print(ind2obj[docInd[i,k]].title)
+
+
+##############################################
+    import pickle
+    with open('test30.pickle', 'w') as f:
+        pickle.dump([X,Xp,Xl,Xo,X_all,K,Learn,Pz_d_km,Pw_z_km,Pw_z,Pz_d,Pd,Li,\
+                labels,terms,termsp,termsl,termso,terms_all,DT,ind2obj,clusModel],f)
+    exit(0)
+#######################
+    order_centroids = clusModel.cluster_centers_.argsort()[:, ::-1]
+    termsXX = terms +terms_all
+    for i in clus2doc:
+        indList = np.array(list(clus2doc[i]))
+        ki = len(indList)/20
+        if ki<2:          
+          outfile.write("ki<2\n")
+          for ind in order_centroids[i, :20]:
+            outfile.write(' %s' % termsXX[ind])
+          outfile.write("========\n")
+          for ind in indList:
+            outfile.write(ind2obj[ind].title+"\n")
+            ents = ind2obj[ind].entities[3]
+            for e in ents:
+                outfile.write(e+":"+str(ents[e])+"\t")
+            outfile.write("\n")
+          outfile.write("***********************************************************\n")
+          continue
+        Xi = X[indList,:]
+        clusModeli,clus2doci,knn_graphi = getCluster(Xi,ki,knnNum,opts) 
+        order_centroidsi = clusModeli.cluster_centers_.argsort()[:, ::-1] 
+        
+        for j in range(ki):
+            for ind in order_centroidsi[j, :20]:
+                outfile.write(' %s' % termsXX[ind])
+            outfile.write("========\n")
+            indListj = indList[np.array(list(clus2doci[j]))]
+            for ind in indListj:
+                outfile.write(ind2obj[ind].title+"\n")
+                ents = ind2obj[ind].entities[3]
+                for e in ents:
+                    outfile.write(e+":"+str(ents[e])+"\t")
+                outfile.write("\n")
+            outfile.write("---------------------------------------\n")
+        outfile.write("***********************************************************\n")
+    exit(0)
+
+
 
 ############# print cluster + rank tweets    
     # place holder
@@ -372,17 +480,3 @@ if __name__ == "__main__":
         #outfile.write('%s' % maxDist)
         printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2obj,t_topK,vectorizer,tweetPre,opts)
         outfile.write('*****************\n')
-
-############# print agglomerative indices
-#    #print(clusModel.n_leaves_)
-##    print(clusModel.n_components_)
-##    outfile.write(str(clusModel.n_components_))
-#    #print(clusModel.children_)
-#    outfile.write("ind to newsID:\n")
-#    for i in ind2obj:
-#        outfile.write(str(i)+" "+str(ind2obj[i].ID)+"\n")
-#    outfile.write("children_ array in scikit-learn aggl clustering array:\n")
-#
-#    np.set_printoptions(threshold=np.nan)
-#    outfile.write(str(clusModel.children_))
-#    outfile.write('\n')

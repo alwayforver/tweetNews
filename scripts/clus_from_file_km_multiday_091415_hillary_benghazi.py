@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -28,15 +27,25 @@ import backendDefs as bk
 from datetime import datetime as dt
 from datetime import timedelta as tdelta
 import operator
-
+sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
+sys.stdin = codecs.getwriter('utf-8')(sys.stdin)
 def readfile(file,dataop,count,ind2obj,dtpure,lines):
 #    lines = []
 #    ind2obj = {}
 #    count = 0
     for line in file:
-        if len(line.strip().split("\t")) != 9:
+        if len(line.strip().split("\t")) == 10: #### after dbpedia entities are stored
+            ID,url,title,source,created_at,authors,key_word,snippets,raw_text,entities = line.strip().split("\t")
+        elif len(line.strip().split("\t")) == 9:
+            ID,url,title,source,created_at,authors,key_word,snippets,raw_text = line.strip().split("\t")
+        else:
             continue
-        ID,url,title,source,created_at,authors,key_word,snippets,raw_text = line.strip().split("\t")
+        strAll = (title+raw_text).lower()
+        interested = False
+        if 'powerball' in strAll: # and 'benghazi' in strAll:
+            interested = True
+        if not interested:
+            continue
         ID = int(ID)
         ind2obj[count] = bk.News(ID,title,raw_text,snippets,key_word,source,created_at,dtpure)
         if dataop == "all":
@@ -64,30 +73,28 @@ def getVec(lines,vocab):
     outfile.write("n_samples: %d, n_features: %d \n" % X.shape)
     print()
     return (X,vectorizer)
-def getCluster(X,k,M,opts):
-    # M: knnNum
-#    t0 = time()
-#    print("knn graph")
-    knn_graph = None
-    #    knn_graph = kneighbors_graph(X, M)
-#    print("knn graph done in %0.3fs" % (time() - t0))
-#    outfile.write("knn graph done in %0.3fs\n" % (time() - t0))
-#    aggl = AgglomerativeClustering(linkage='ward', connectivity=knn_graph, n_clusters=k)
-    aggl = AgglomerativeClustering(linkage='ward', n_clusters=k)
-    print("Clustering sparse data with %s" % aggl)
-    outfile.write("Clustering sparse data with %s\n" % aggl)
+def getCluster(X,k,opts):
+    if opts.minibatch:
+        km = MiniBatchKMeans(n_clusters=k, init='k-means++', n_init=10,
+                             init_size=1000, batch_size=1000, verbose=opts.verbose)
+    else:
+        km = KMeans(n_clusters=k, init='k-means++', max_iter=100, n_init=10,
+                    verbose=opts.verbose)
+
+    print("Clustering sparse data with %s" % km)
+    outfile.write("Clustering sparse data with %s\n" % km)
     t0 = time()
-    aggl.fit(X)
+    km.fit(X)
     print("done in %0.3fs" % (time() - t0))
     outfile.write("clustering done in %0.3fs\n" % (time() - t0))
     print()
     
-    labels = aggl.labels_
+    labels = km.labels_
     clus2doc = {}
     for i in range(len(labels)):
         clus2doc[labels[i]] = clus2doc.get(labels[i],set())
         clus2doc[labels[i]].add(i)    
-    return (aggl,clus2doc,knn_graph)
+    return (km,clus2doc)
 def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
     #n = News.objects.filter(ID=newsID)
     #if n.count() > 0:
@@ -114,6 +121,13 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
         ID, raw_text, created_at, contained_url, hash_tags, retw_id_str, retw_favorited, retw_favorite_count, is_retweet, retweet_count, \
         tw_favorited, tw_favorite_count, tw_retweeted, tw_retweet_count, user_id_str, verified, follower_count, statuses_count, friends_count, \
     favorites_count, user_created_at= fields[:21]
+        interested = False
+        raw_text = raw_text.split('http')[0] ### http unique
+        strAll = raw_text.lower()
+        if 'powerball' in strAll and len(raw_text)>100:
+            interested = True
+        if not interested:
+            continue
         try:
             ID = int(ID)
         except:
@@ -154,7 +168,9 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
             #    tw_text = tw_text[:s] + tmp[e+1:]
         # remove url    
         #tw_text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', tw_text)
-        if "http" not in raw_text and "RT @" not in raw_text \
+
+        # if "http" not in raw_text and "RT @" not in raw_text \
+        if  "RT @" not in raw_text \
             and ID not in tweetIDset and raw_text not in tweetSet:
             tweet = bk.Tweet(ID,raw_text,created_at,is_retweet,retweet_count,hash_tags)
             tweetsObj.append(tweet)
@@ -188,28 +204,35 @@ def rankTweets(tweets, tweetsObj, newsVec, vocab, t_topK):
 
 def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2obj,t_topK,vectorizer,tweetPre,opts):
     if not (opts.n_components or opts.use_hashing):
-        print("Cluster %d:" % i, end='')
-        outfile.write("Cluster %d:" % i)
-    #    for ind in order_centroids[i, :10]:
-    #        print(' %s' % terms[ind], end='')
-    #        outfile.write(' %s' % terms[ind])
+        print("*NEWS*-- Cluster %d:" % i, end='')
+        outfile.write("*NEWS*-- Cluster %d:" % i)
+        for ind in order_centroids[i, :20]:
+            print(' %s' % terms[ind], end='')
+            outfile.write(' %s' % terms[ind])
         print()
         outfile.write('\n')
         tweets = []
         tweetsObj = []
-    #    tweets = set()
         newsList = [ind2obj[ind] for ind in clus2doc[i]]
+        """
         newsEntityDict = {}
         tweetsEntityDict = {}
+        """
+        tweetIDset = set()
+        tweetSet = set()
         for news in sorted(newsList, key=operator.attrgetter('created_at')):
 #        for ind in clus2doc[i]:
 #            news = ind2obj[ind]
+            print('*NEWS*-- '+str(news.created_at)+"\t"+news.title+"\t||"+news.raw_text.split('.')[0])
 
-            print(str(news.created_at)+"\t"+news.title)
+#            for item in ['*NEWS*-- ', news.created_at.strftime("%Y-%m-%d %H:%M:%S"), news.title, "||",news.raw_text.split('.')[0]]:
+#                print(type(item))
+#                print(item)
+#            print (u'\t'.join(['*NEWS*-- ', news.created_at.strftime("%Y-%m-%d %H:%M:%S"), news.title, "||",news.raw_text.split('.')[0]]))
             #print(news.entities())
-            outfile.write(str(news.created_at)+"\t"+news.title+"\n")
+            outfile.write('*NEWS*-- '+str(news.created_at)+"\t"+news.title+"\t||"+news.raw_text.split('.')[0] +"\n")
             #outfile.write(news.entities()+"\n")
-
+            """
             entities = news.entities().strip().split('\t')
             for entity in entities:
                 count = entity.split(':')[-1]
@@ -218,38 +241,27 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
                     newsEntityDict[words] += int(count)
                 else:
                     newsEntityDict[words] = int(count)
-
-            #print(lines[ind].split('\t')[2])
-            #outfile.write(lines[doc].split('\t')[2])
-            #outfile.write('\n')
+            """
             print("-------")
             outfile.write("-------\n")
             newsID = news.ID
             dtpure = news.dtpure
-            tweetIDset = set()
-            tweetSet = set()
-            #if getRelTweets(newsID,dtpure,tweetPre, tweetIDset,tweetSet):
             addtweets,addtweetsObj = getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet)           
+            print(str(len(tweetIDset)))
+            print ("|||||||||||")
             tweets = tweets + addtweets
             tweetsObj = tweetsObj + addtweetsObj
-    #            tweets = tweets | getRelTweets(newsID)
-    #    tweets = list(tweets)
         if tweets:
-            newsCenter = np.squeeze(np.asarray(getNewsCenter(X,clus2doc[i])))
-            for term in newsCenter.argsort()[::-1][:20]:
-                print(' %s' % terms[term], end='')
-                outfile.write(' %s' % terms[term])
-            #topTweets = rankTweets(tweets, clusModel.cluster_centers_[i,:], vectorizer.vocabulary_,t_topK)
-            topTweetsObj,topTweetsScore = rankTweets(tweets,tweetsObj, newsCenter, vectorizer.vocabulary_,t_topK)
+            topTweetsObj,topTweetsScore = rankTweets(tweets,tweetsObj, clusModel.cluster_centers_[i,:], vectorizer.vocabulary_,t_topK)
             print("*******total tweets: "+str(len(tweets)))
             outfile.write("\n*******top tweets:********total tweets: " + str(len(tweets))+"\n")
             print("top tweets:")
             for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')):
-                print(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
+                print(str(t.ID) +"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
                 #print(t.entities())
-                outfile.write(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
+                outfile.write(str(t.ID) +"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
                 #outfile.write(t.entities())
-
+                """
                 entities = t.entities().strip().split('\t')
                 for entity in entities:
                     count = entity.split(':')[-1]
@@ -258,13 +270,13 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
                         tweetsEntityDict[words] += int(count)
                     else:
                         tweetsEntityDict[words] = int(count)
-
+                """
                 outfile.write('\n-------\n')
                 print("-------")
         else:
             print("no tweets retrieved")
             outfile.write("no tweets retrieved\n")
-
+        """
         news_entities = ''
         for entity, count in newsEntityDict.items():
             news_entities += entity + ':' + str(count) + '\t'
@@ -282,25 +294,11 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
         print(tweets_entities)
         outfile.write('tweets entities\n')
         outfile.write(tweets_entities + '\n')
-
+        """
 
         print("=========")
         outfile.write("=========\n\n")
         print()
-
-#def process(X,k,lines,vectorizer,outfile,ind2obj,t_topK,opts):
-#    (clusModel,clus2doc) = getCluster(X,k,opts)
-##    order_centroids = clusModel.cluster_centers_.argsort()[:, ::-1]
-##    terms = vectorizer.get_feature_names()
-#    order_centroids=None
-#    terms=None
-#    for i in range(k):
-#        #outfile.write('%s' % maxDist)
-#        printCluster(i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2obj,t_topK,vectorizer,tweets_input_prefix,opts)
-#        outfile.write('*****************\n')
-#    print(clusModel.n_leaves_)
-#    print(clusModel.n_components_)
-#    print(clusModel.children_)
 
 #################################################################################        
 
@@ -312,8 +310,8 @@ if __name__ == "__main__":
     op.add_option("--lsa",
                   dest="n_components", type="int",
                   help="Preprocess documents with latent semantic analysis.")
-    op.add_option("--no-minibatch",
-                  action="store_false", dest="minibatch", default=True,
+    op.add_option("--minibatch",
+                  action="store_true", dest="minibatch", default=False,
                   help="Use ordinary k-means algorithm (in batch mode).")
     op.add_option("--no-idf",
                   action="store_false", dest="use_idf", default=True,
@@ -345,7 +343,7 @@ if __name__ == "__main__":
 
 ############## readfile news. Two copies: lines (for scikit-learn's convenience) and objects (for later print use)
     numDays = (e_dt - s_dt).days
-    k = 20*(numDays+1)
+#    k = 20*(numDays+1)
     count = 0
     lines = []
     ind2obj = {}
@@ -353,7 +351,7 @@ if __name__ == "__main__":
             fileDate = s_dt + tdelta(days = x)
             dtpure = fileDate.strftime("%Y-%m-%d")
             filename = newsPre + dtpure +".txt"
-            print filename
+            print(filename)
             if os.path.isfile(filename):
                 file = codecs.open(filename, encoding = 'utf-8')
                 count = readfile(file,dataop,count,ind2obj,dtpure,lines)
@@ -361,11 +359,11 @@ if __name__ == "__main__":
 ############# clustering on news
     X,vectorizer = getVec(lines,vocab)
     #clus2doc index of newsID
-    clusModel,clus2doc,knn_graph = getCluster(X.toarray(),k,knnNum,opts)
+    clusModel,clus2doc = getCluster(X,k,opts)
 
 ############# print cluster + rank tweets    
     # place holder
-    order_centroids=None
+    order_centroids = clusModel.cluster_centers_.argsort()[:, ::-1]
     terms=vectorizer.get_feature_names()
 
     for i in range(k):

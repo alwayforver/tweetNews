@@ -184,8 +184,6 @@ def rankTweets(tweets, tweetsObj, newsVec, vocab, t_topK):
     for i in tweetsInd:
         topTweetsScore[tweetsObj[i].ID] = scores[i]
     return topTweetsObj,topTweetsScore
-
-
 def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2obj,t_topK,vectorizer,tweetPre,opts):
     if not (opts.n_components or opts.use_hashing):
         print("Cluster %d:" % i, end='')
@@ -206,19 +204,9 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
 #            news = ind2obj[ind]
 
             print(str(news.created_at)+"\t"+news.title)
-            #print(news.entities())
+            print(news.entities())
             outfile.write(str(news.created_at)+"\t"+news.title+"\n")
-            #outfile.write(news.entities()+"\n")
-
-            entities = news.entities().strip().split('\t')
-            for entity in entities:
-                count = entity.split(':')[-1]
-                words = entity.replace(':' + count, '')
-                if words in newsEntityDict:
-                    newsEntityDict[words] += int(count)
-                else:
-                    newsEntityDict[words] = int(count)
-
+            outfile.write(news.entities()+"\n")
             #print(lines[ind].split('\t')[2])
             #outfile.write(lines[doc].split('\t')[2])
             #outfile.write('\n')
@@ -246,44 +234,14 @@ def printCluster(X,i,lines,clus2doc,clusModel,order_centroids,terms,outfile,ind2
             print("top tweets:")
             for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')):
                 print(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
-                #print(t.entities())
+                print(t.entities())
                 outfile.write(str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text+"\n")
-                #outfile.write(t.entities())
-
-                entities = t.entities().strip().split('\t')
-                for entity in entities:
-                    count = entity.split(':')[-1]
-                    words = entity.replace(':' + count, '')
-                    if words in tweetsEntityDict:
-                        tweetsEntityDict[words] += int(count)
-                    else:
-                        tweetsEntityDict[words] = int(count)
-
+                outfile.write(t.entities())
                 outfile.write('\n-------\n')
                 print("-------")
         else:
             print("no tweets retrieved")
             outfile.write("no tweets retrieved\n")
-
-        news_entities = ''
-        for entity, count in newsEntityDict.items():
-            news_entities += entity + ':' + str(count) + '\t'
-        print('news entities')
-        print(news_entities)
-        print("-------")
-        outfile.write('news entities\n')
-        outfile.write(news_entities + '\n')
-        outfile.write('-------\n')
-
-        tweets_entities = ''
-        for entity, count in tweetsEntityDict.items():
-            tweets_entities += entity + ':' + str(count) + '\t'
-        print('tweets entities')
-        print(tweets_entities)
-        outfile.write('tweets entities\n')
-        outfile.write(tweets_entities + '\n')
-
-
         print("=========")
         outfile.write("=========\n\n")
         print()
@@ -353,7 +311,6 @@ if __name__ == "__main__":
             fileDate = s_dt + tdelta(days = x)
             dtpure = fileDate.strftime("%Y-%m-%d")
             filename = newsPre + dtpure +".txt"
-            print filename
             if os.path.isfile(filename):
                 file = codecs.open(filename, encoding = 'utf-8')
                 count = readfile(file,dataop,count,ind2obj,dtpure,lines)
