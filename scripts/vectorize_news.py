@@ -29,28 +29,35 @@ class newsStream(object):
     def __iter__(self):
         numDays = (self.e_dt - self.s_dt).days
         count = 0
+        titleSet = set()
         sys.stderr.write("iterator started... \n" )
         for x in range(numDays+1):
             fileDate = self.s_dt + tdelta(days = x)
             filename = fileDate.strftime("%Y-%m-%d")+'.txt'
             if os.path.isfile(newsPre+filename):
                 sys.stderr.write("file processing: " + filename +'\r'),
-                for item in parsefile(filename,self.newsDIR,self.per,self.loc,self.org,self.other):
+                for item in parsefile(filename,self.newsDIR,titleSet,self.per,self.loc,self.org,self.other):
                     self.ind2obj[count] = item[1]
                     yield item[0]
                     count +=1
         sys.stderr.write('\n')
         sys.stderr.write("final count = " + str(count) + '\n')
 
-def parsefile(f,inPre,per,loc,org,other):
+def parsefile(f,inPre,titleSet,per,loc,org,other):
     fin = codecs.open(inPre+f, encoding = 'utf-8')
     for line in fin:
-        if len(line.strip().split("\t")) != 13:
+        if len(line.strip().split("\t")) != 11:
             continue
         ID,url,title,source,created_at,authors,key_word,snippets,raw_text,\
-                h_tokens,b_tokens,h_tokens_ent,b_tokens_ent = line.strip().split("\t")
-        if len(b_tokens.split()) > MAX_BODY_LEN:            
+            h_tokens_ent,b_tokens_ent = line.strip().split("\t")
+              #  h_tokens,b_tokens,\
+        if title in titleSet:
             continue
+        else:
+            titleSet.add(title)
+        if len(b_tokens_ent.split()) > MAX_BODY_LEN:            
+            continue
+
         h_tokens_ent = unidecode.unidecode(h_tokens_ent.strip())
         b_tokens_ent = unidecode.unidecode(b_tokens_ent.strip())
         #h = grep_ent_with_context(h_tokens_ent,per,loc,org,other)  # fds_per_| asked me about ...
@@ -62,7 +69,7 @@ def parsefile(f,inPre,per,loc,org,other):
         h = my_tokenizer(h, tokenizer)
         b = my_tokenizer(b, tokenizer)
         tokens = h+' '+h+' '+b  # title twice
-        yield tokens.lower(),bk.News(ID,title,raw_text,snippets,key_word,source,created_at,f.split('.')[0]) # can also leave lowercase to scikit
+        yield tokens.lower(),bk.News(ID,title,raw_text,snippets,key_word,source,created_at,f.split('.')[0],h_tokens_ent,b_tokens_ent) # can also leave lowercase to scikit
     fin.close()
 
 def getVec(stream, vocab, min_df):
@@ -86,6 +93,7 @@ if __name__ == "__main__":
     nstream_per = newsStream(newsPre,s_dt,e_dt,True,False,False,False)
     nstream_loc = newsStream(newsPre,s_dt,e_dt,False,True,False,False)
     nstream_org = newsStream(newsPre,s_dt,e_dt,False,False,True,False)
+    nstream_plo = newsStream(newsPre,s_dt,e_dt,True,True,True,False)
     nstream_all = newsStream(newsPre,s_dt,e_dt,True,True,True,True)
     
     
@@ -93,6 +101,7 @@ if __name__ == "__main__":
     Xp, vectp = getVec(nstream_per, None, 2)
     Xl, vectl = getVec(nstream_loc, None, 2)
     Xo, vecto = getVec(nstream_org, None, 2)
+    Xplo, vectplo = getVec(nstream_plo, None, 2)
     X_all, vect_all = getVec(nstream_all, None, 2)
     
     # time vector
@@ -103,7 +112,7 @@ if __name__ == "__main__":
 
     import pickle
     with open(sys.argv[4], 'w') as f:
-        pickle.dump([X,Xp,Xl,Xo,X_all,vect,vectp,vectl,vecto,vect_all,DT,nstream.ind2obj],f)
+        pickle.dump([ [X,Xp,Xl,Xo,Xplo,X_all],[vect,vectp,vectl,vecto,vectplo,vect_all],DT,nstream.ind2obj],f)
     #for item in nstream:
     #    print item    
     

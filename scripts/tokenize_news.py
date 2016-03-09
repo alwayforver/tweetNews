@@ -4,25 +4,13 @@ import re,string,requests,json
 import nltk
 from datetime import datetime as dt
 from datetime import timedelta as tdelta
-from utils import dbpedia,parseEntity,my_tokenizer,rep1,rep2
+from utils import processText,processTextEnt
 
 
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 sys.stdin = codecs.getreader('utf-8')(sys.stdin)
 tokenizer = 'reg'
 
-def processText(text):
-    text = filter(lambda x: x in string.printable, text.strip()) # CAVEAT: other languages 
-    text = rep1.sub(' ', text)
-    text = rep2.sub('', text)
-    return my_tokenizer(text, tokenizer) 
-def processTextEnt(text):
-    text = filter(lambda x: x in string.printable, text.strip()) # CAVEAT: other languages
-    text = rep1.sub(' ', text)
-    afterDBpedia = parseEntity(text, dbpedia(text))
-    #afterDBpedia = rep2.sub('', afterDBpedia) 
-    return afterDBpedia
-#    return my_tokenizer(afterDBpedia, tokenizer)
 def parsefile(f,inPre,outPre):
     fin = codecs.open(inPre+f, encoding = 'utf-8')
     fout = codecs.open(outPre+f, 'w', encoding = 'utf-8')
@@ -38,13 +26,13 @@ def parsefile(f,inPre,outPre):
             raw_text=snippets
         title = unidecode.unidecode(title.strip())
         raw_text = unidecode.unidecode(raw_text.strip())
-        h_tokens = processText(title)
-        b_tokens = processText(raw_text)
+        #h_tokens = processText(title)
+        #b_tokens = processText(raw_text)
         h_tokens_ent = processTextEnt(title)
         b_tokens_ent = processTextEnt(raw_text)
 
         lineout = '\t'.join([ID,url,title,source,created_at,authors,key_word,snippets,raw_text,\
-                h_tokens, b_tokens, \
+         #       h_tokens, b_tokens, \
                 h_tokens_ent, b_tokens_ent]) 
         
         fout.write(lineout+'\n')

@@ -97,6 +97,50 @@ def rankTweets(tweets, tweetsObj, newsVec, vocab, t_topK):
         topTweetsScore[tweetsObj[i].ID] = scores[i]
     return topTweetsObj,topTweetsScore
 
+def printNewsCluster(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_d,wordIndList,docInd,dID=[]):
+    print "Cluster: ",i
+    tweets = []
+    tweetsObj = []
+    M = 50 # max number of terms to output
+    N = 1000 # max number of news output
+    for dim in range(len(termsList)):            
+        print("dim "+str(dim)+": ")
+        printTerms(M,termsList[dim],wordIndList[dim],i)
+    tweetIDset = set()
+    tweetSet = set()
+    for k in range(N):
+        docIDinX = docInd[i,k]
+        news_cosine= cosine_d_z[docIDinX,i]
+        news_topic_score=Pz_d[i,docIDinX]
+        if news_topic_score < 0.4: # threshold Pz_d
+            continue
+        if not dID:
+            news = ind2obj[docIDinX]
+        else:
+            news = ind2obj[dID[docIDinX]]
+
+        #print "NEWS-- "+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+str(news.created_at)+'\t'+news.title)+'\t'+news.raw_text.split('.')[0]
+        print "NEWS--"+str(i)+"\t"+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+'\t'+news.title+'\t'+' '.join(news.raw_text.split()[0:60])
+
+        #print("-------")
+        if tweetPre == 'null':
+            continue
+        newsID = news.ID
+        dtpure = news.dtpure
+        addtweets,addtweetsObj = getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet)           
+        tweets = tweets + addtweets
+        tweetsObj = tweetsObj + addtweetsObj
+    if tweetPre != 'null' and tweets:
+        newsCenter = Pw_z[:,i]
+        topTweetsObj,topTweetsScore = rankTweets(tweets,tweetsObj, newsCenter, termsList[0],t_topK)
+        print("*******total tweets: "+str(len(tweets)))
+        print("top tweets:")
+        # for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')): # sort by time
+        for t in topTweetsObj: # sort by cosine score
+            print("TWEET--"+str(i)+"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
+    else:
+        print("no tweets retrieved")
+    print("=========")
    
 def printTermsStats(M,terms,wordInd,score_w_z,i,Pw,Lw_z,Sw,Pw_z):
     for j in range(min(M,wordInd.shape[0])):
@@ -126,9 +170,6 @@ def printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_
     N = 1000 # max number of news output
     tweetIDset = set()
     tweetSet = set()
-    resDocInd = [] # index in X and ind2obj
-    resTweetCount = 0 # max index in tweetsObj
-
     for k in range(min(N,docInd.shape[1])):
         docIDinX = docInd[i,k]
         news_cosine= cosine_d_z[docIDinX,i]
@@ -137,10 +178,8 @@ def printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_
             continue
         if not len(dID):
             news = ind2obj[docIDinX]
-            resDocInd.append(docIDinX)
         else:
             news = ind2obj[dID[docIDinX]]
-            resDocInd.append(dID[docIDinX])
 
         #print "NEWS-- "+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+str(news.created_at)+'\t'+news.title)+'\t'+news.raw_text.split('.')[0]
         print "NEWS--"+str(i)+"\t"+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+'\t'+news.title+'\t'+' '.join(news.raw_text.encode('utf-8').split()[0:60])
@@ -159,15 +198,11 @@ def printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_
         print("*******total tweets: "+str(len(tweets)))
         print("top tweets:")
         # for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')): # sort by time
-        
         for t in topTweetsObj: # sort by cosine score
-            if topTweetsScore[t.ID] > 0.001:
-                print("TWEET--"+str(i)+"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
-                resTweetCount+=1
+            print("TWEET--"+str(i)+"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
     else:
         print("no tweets retrieved")
     print("=========")
-    return resDocInd,resTweetCount,topTweetsObj,topTweetsScore
 
 def getStats(Xs,Xinds,Pw_zs,Pz_d,Pd,K):
     t0 = time()
@@ -285,7 +320,36 @@ def init_all(K,Xs,DT,mini=0,n_init=30,init_size=20000,batch_size=500,verbose=Fal
     # return Pz_d_km,Pw_z_km, ..., mu_km, sigma_km
     return inits,labels,centers
 
-def subRun(Xs,n_wdxPz_wds,K,params,DT=[],dIDParent=[]):
+def run(Xs,Xinds,ws,lambdaB,Learn,inits,selectTime=0,wt=0.5,DT=[]):
+    numX = len(Xinds)
+    data = []
+    for i in range(len(Xinds)):
+        data.append(ws[i]*Xs[Xinds[i]])
+    data = data+[DT]
+    
+    t0 = time()
+    sys.stderr.write('PLSA...\n')
+    Pw_zs,Pz_d,Pd,mu,sigma,Li = pLSABet(selectTime,numX,Learn,data,inits,wt,lambdaB,1)
+    if Pw_zs is None:
+        print "############### Pw_zs = None. Reduce K!!! " 
+        exit(-1)
+    print( "pLSA done in "+str(time() - t0))
+    return Pw_zs,Pz_d,Pd,mu,sigma,Li
+
+def subRunOld(eventID,Xs,DT,n_wdxPz_wds,Xinds,ws,selectTime,wt,lambdaB,Learn):
+    Xevents,dID = selectTopic(Xs,n_wdxPz_wds,eventID)
+    if DT:
+        DTevent = np.array(DT)[dID]
+    else:
+        DTevent = []
+        sys.stderr.write('no DT. \n')
+    inits,labels,centers = init_all(Kevent,Xevents,DTevent,mini=0)    
+    Pw_zs,Pz_d,Pd,mu,sigma,Li = run(Xevents,Xinds,ws,lambdaB,Learn,inits,selectTime,wt,DT)
+
+    return Xevents,dID,DTevent,inits,labels,centers,Pw_zs,Pz_d,Pd,mu,sigma,Li
+
+
+def subRun(Xs,n_wdxPz_wds,K,params,DT=[]):
     Xevents,dID = selectTopic(Xs,n_wdxPz_wds,params.eventID)
     if DT:
         DTevent = np.array(DT)[dID]
@@ -293,11 +357,34 @@ def subRun(Xs,n_wdxPz_wds,K,params,DT=[],dIDParent=[]):
         DTevent = []
         sys.stderr.write('no DT. \n')
     inits,labels,centers = init_all(K,Xevents,DTevent,mini=0)   # labels and centers not used 
-    if len(dIDParent)>0:
-        dID = dIDParent[dID]
     eventNode = EventNode(Xevents,DTevent,params,inits,dID=dID)
     eventNode.run()
     return eventNode
+
+# print topics
+def printStatsText(Xs,Xinds,Pw_zs,Pz_d,Pd,K,vects,ind2obj,dID=[],
+        t_topK=10000,tweetPre='null',switch='text',fromPlsa=True):
+    Pws,Lw_zs,Sws = getStats(Xs,Xinds,Pw_zs,Pz_d,Pd,K)
+    sys.stderr.write('Printing stats text...\n')    
+    numX = len(Xinds)
+    termsList= []
+    wordIndList = []
+    score_w_zs = []
+    for dim in range(numX):
+        termsList.append(vects[Xinds[dim]].get_feature_names())    
+        score_z_w = (Lw_zs[dim].T>0) * np.log(Lw_zs[dim].T+1) * Pw_zs[dim].T * np.log(Pws[dim]+1) * Sws[dim]
+        score_w_zs.append(score_z_w.T)
+        wordIndList.append( score_z_w.T.argsort(axis=0)[::-1,:] )
+    if switch == 'text':
+        cosine_d_z = Xs[0].dot(Pw_zs[0])
+        if fromPlsa:
+            docInd = Pz_d.argsort()[:,::-1]
+        else:
+            docInd = cosine_d_z.T.argsort()[:,::-1]
+    for i in range(K):
+        printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs)
+        if switch == 'text':
+            printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,dID)
 
 def nextData(rootNode):
     params = rootNode.params
@@ -332,9 +419,9 @@ class EventNode:
     def __init__(self,Xs,DT=[],params=None,initsDescriptor=None,descriptor=None,dID=[],debug=1):
         self.Xs = Xs  #
         self.DT = DT  #
-        self.params=params   #        
+        self.params=params   #
         if initsDescriptor:
-            self.initsDescriptor = initsDescriptor  #            
+            self.initsDescriptor = initsDescriptor  #
         if descriptor:
             self.descriptor = descriptor  #
         self.dID=dID #
@@ -343,11 +430,8 @@ class EventNode:
         params = self.params
         numX = len(params.Xinds)
         data = []  
-        Pw_zs = []    ####
         for i in range(numX):
             data.append(params.ws[i]*self.Xs[params.Xinds[i]])
-            Pw_zs.append(self.initsDescriptor.Pw_zs[params.Xinds[i]])  ####
-        self.initsDescriptor.Pw_zs = Pw_zs  ####
         sys.stderr.write('PLSABet run at node '+str(params.eventID)+'...\n')
         self.descriptor = pLSABet(data,self.initsDescriptor,params.lambdaB,
                 params.selectTime,self.DT,params.wt,params.Learn,params.debug)  #
@@ -379,45 +463,11 @@ class EventNode:
             wordIndList.append( score_z_w.T.argsort(axis=0)[::-1,:] )
         if switch == 'text':
             cosine_d_z = self.Xs[0].dot(Pw_zs[0])
-            #if fromPlsa:
-            #    docInd = Pz_d.argsort()[:,::-1]
-            #else:
-            docInd = cosine_d_z.T.argsort()[:,::-1]
+            if fromPlsa:
+                docInd = Pz_d.argsort()[:,::-1]
+            else:
+                docInd = cosine_d_z.T.argsort()[:,::-1]
         for i in range(K):
             printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs)
             if switch == 'text':
                 printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,self.dID)
-
-    # to do
-    def printSumCluster(self,vects,ind2obj,
-            t_topK=10000,tweetPre='null',switch='text',fromPlsa=True):
-        desc = self.descriptor if fromPlsa else self.initsDescriptor
-        Pw_zs = desc.Pw_zs
-        Pz_d = desc.Pz_d
-        Pd = desc.Pd
-        K = Pz_d.shape[0]
-        if fromPlsa:
-            K-=1
-        Xinds = self.params.Xinds if fromPlsa else range(len(self.Xs))
-
-        Pws,Lw_zs,Sws = getStats(self.Xs,Xinds,Pw_zs,Pz_d,Pd,K) # be carefully with Xs. Can be data
-        sys.stderr.write('Printing stats text...\n')    
-        numX = len(Xinds)
-        termsList= []
-        wordIndList = []
-        score_w_zs = []
-        for dim in range(numX):
-            termsList.append(vects[Xinds[dim]].get_feature_names())    
-            score_z_w = (Lw_zs[dim].T>0) * np.log(Lw_zs[dim].T+1) * Pw_zs[dim].T * np.log(Pws[dim]+1) * Sws[dim]
-            score_w_zs.append(score_z_w.T)
-            wordIndList.append( score_z_w.T.argsort(axis=0)[::-1,:] )
-        if switch == 'text':
-            cosine_d_z = self.Xs[0].dot(Pw_zs[0])
-            docInd = cosine_d_z.T.argsort()[:,::-1]
-        for i in range(K):
-            printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs)
-            if switch == 'text':
-                printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,self.dID)
-        # print summary
-        relNews = getRel
-        #relTweets = 

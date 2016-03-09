@@ -1,3 +1,6 @@
+# mysql
+mysql -u hcai6 -p
+
 check single day
 python news_clus_from_file.py /home/wtong8/NewsTwitter/news/2014-11-18.txt /home/wtong8/NewsTwitter/tweets/2014-11-18/ 20 50  text out1118_t50_redund.20
 compare two days news
@@ -5,3 +8,28 @@ python news_clus_2day.py /home/wtong8/NewsTwitter/news/2014-11-17.txt /home/wton
 python news_clus_from_file_lda.py /home/wtong8/NewsTwitter/news/2014-11-17.txt tmp 40 1 all tmp.txt
 python news_clus_from_file_aggl_multiday.py /home/wtong8/NewsTwitter/news/ 2015-01-01 2015-01-04 tmp 50 1 all tmp50.txt
 time python clus_from_file_aggl_multiday.py /home/wtong8/NewsTwitter/news/ 2014-12-20 2015-01-04 /home/wtong8/NewsTwitter/tweets/ 20 1000 text outauto1225_0104.txt
+python2.7 gen_matlab_ent.py /home/wtong8/NewsTwitter/news/ 2014-12-20 2015-01-04 /home/wtong8/NewsTwitter/tweets/ 50 1000 text outentsurf.txt 5
+load.py /home/wtong8/NewsTwitter/news/ 2014-12-20 2015-01-04 /home/wtong8/NewsTwitter/tweets/ 50 1000 text outentsurf.txt
+python testIndex.py "query OR query1" 50
+python gen_matlab_tweet.py tweetSony ~/Dropbox/linux_buffer/testX_thresh_10K_50.mat 2014-12-20 ~/Dropbox/linux_buffer/tweetX.mat ~/Dropbox/linux_buffer/tweetCleanSony
+
+--generate pickle
+python runPLSA.py /home/wtong8/NewsTwitter/news/ 2014-12-20 2015-01-04 tmp 30 0 text outentsurf12200104.txt 5
+--load pickle
+python loadPLSA.py 30 0
+
+-- kmeans reduce K + plsa reduce K
+python dataSplitJesse.py 30 0 jesse30/
+
+
+select a.ID, b.news_id, b.tweet_id, raw_text, hash_tags from overviews_tweet a join overviews_tweet_related_news b on b.news_id = 6385 and a.ID = b.tweet_id;
+
+
+awk -F\\t '{print $3". "$9}'  news/2015-04-13.txt|sed 's/::::::::/ /g'> ~/projects/tweet/tweetNews/data/news_2015-04-13.txt
+cut -f3 news/2015-04-13.txt > ~/projects/tweet/tweetNews/data/news_title_2015-04-13.txt
+
+# SegPhrase
+./train_custom.sh /home/jwang112/projects/embedding/trunk/news.2012.en.shuffled-norm0 RUN_ID  1(auto_label) 0(wordnet_noun) 10(support_threshold) 0(need_unigram)
+./parse_custom.sh test_file RUN_ID top_n
+
+

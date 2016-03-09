@@ -47,15 +47,20 @@ def getentities(text):
 #        return "dbpedia error"
         return({},{},{},{},{})
 class News:
-    def __init__(self,ID,title,raw_text,snippets,key_word,source,created_at,dtpure):
+    def __init__(self,ID='',title='empty',raw_text='',snippets='',key_word='',source='',created_at='',dtpure='',h_ent='',b_ent=''):
         self.ID = ID
         self.title = title
         self.raw_text = raw_text
         self.snippets = snippets
         self.key_word = key_word
         self.source = source
-        self.created_at = dt.strptime(created_at[5:-6],"%d %b %Y %H:%M:%S")
+        if created_at:
+            self.created_at = dt.strptime(created_at[5:-6],"%d %b %Y %H:%M:%S")
+        else:
+            self.created_at=created_at
         self.dtpure = dtpure
+        self.h_ent = h_ent
+        self.b_ent = b_ent
         #self.entities = getentities(self.raw_text)  ##################
         #print ID
     entities = ({},{},{},{},{})
@@ -98,46 +103,4 @@ class Tweet:
         self.newsID = nid
     def entities(self):
         return getentities(self.raw_text)
-
-
-class metaNews:
-    def __init__(self,ID,title,raw_text,snippets,key_word,source,created_at):
-        self.ID = ID
-        self.title = title
-        self.raw_text = raw_text
-        self.snippets = snippets
-        self.key_word = key_word
-        self.source = source
-        self.created_at = created_at
-    local_time_zone = None
-    url = None
-    def _tz(self, tz):    
-        self.local_time_zone = tz
-    def _url(self, l):
-        self.url = l
-    def t_path(self):
-        return (self.ID+"_" + \
-            "".join(c for c in self.title if c not in (string.punctuation))).replace(' ', '_') \
-            +'-' \
-            +("".join(c for c in self.source if c not in (string.punctuation))).replace(' ', '_')
-    def relTweets(self,prefixDIR):
-        return []
-
-class metaTweet:
-    def __init__(self,ID,raw_text,created_at,is_retweet,retweet_count,hash_tags):
-        self.ID = ID
-        self.raw_text = raw_text
-        self.created_at = created_at
-        self.is_retweet = is_retweet
-        self.retweet_count = retweet_count
-        self.hash_tags = hash_tags
-    local_time_zone = None
-    newsID = None
-    def _tz(self, tz):
-        self.local_time_zone = tz
-    def _newsID(self, nid):
-        self.newsID = nid
-
-
-
 

@@ -1,14 +1,6 @@
 import sys
 import numpy as np
 from scipy.stats import norm
-class Descriptor:
-    def __init__(self,Pw_zs,Pz_d,Pd=[],mu=0,sigma=0,Li=[]):
-        self.Pw_zs = Pw_zs
-        self.Pz_d = Pz_d
-        self.Pd = Pd
-        self.mu = mu
-        self.sigma = sigma
-        self.Li = Li
 def getMatIndex(X):
     X = X.tocsr()
     indptr,indices = (X.indptr,X.indices)
@@ -91,28 +83,30 @@ def logL(vitals,Pd,forLis,forLit,wt):
         Pt_d, Pz_dt_ = forLit
         Li.append( np.log(Pt_d*Pd).sum()*wt )        
     return sum(Li)
-def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 1):
+def pLSABet(selectTime,numX,Learn,data,inits,wt,lambdaB, debug = 1):
 # data = [Xs,DT]
 # inits = [Pz_d,Pw_z, Pp_z,Pl_z,Po_z,mu,sigma]        
-    numX = len(Xs)
     (Min_Likelihood_Change,Max_Iterations) = Learn
     Li=[]
+    DT=[]
     mu=[]
     sigma=[]
     forLit=[]
     if selectTime:
+        DT = data[-1]
         mu_B = np.mean(DT)
         sigma_B = np.std(DT)
-        mu = np.append(inits.mu, mu_B)
-        sigma = np.append(inits.sigma, sigma_B)
+        mu = np.append(inits[-2], mu_B)
+        sigma = np.append(inits[-1], sigma_B)
         if (sigma==0).sum()>0:
             sigma[sigma==0] = 1e-7
+            return None, None, None, None, None, None
             if debug == 1:
-                sys.stderr.write("zeros in sigma\n")        
-            return None
+                print "zeros in sigma"        
+    Xs = data[:numX]
     nDocs = Xs[0].shape[0]
 # initializing...
-    Pz_d = inits.Pz_d
+    Pz_d = inits[0]
     Pz_d = np.vstack(( (1-lambdaB)*Pz_d,lambdaB*np.ones(nDocs) ))
     if selectTime:
 #        Pt_d, Pz_dt_ = (Pz_d,mu,sig,DT)
@@ -134,7 +128,7 @@ def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 
         Pw_B = np.squeeze(np.asarray(Pw_B))
 #        Pw_Bs.append(Pw_B)
         # init Pw_zs
-        Pw_z = np.c_[inits.Pw_zs[i],Pw_B]
+        Pw_z = np.c_[inits[1+i],Pw_B]
         Pw_zs.append(Pw_z)
         # indices
         indptr,docind,wordind,value = getMatIndex(X)
@@ -147,8 +141,7 @@ def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 
         # print "------"
         # print(Pw_d)
         if Pw_d is None:
-            sys.stderr.write('Pw_d is None\n')
-            return None
+            return None, None, None, None, None, None
         forLis.append( (Pw_d, Pz_dw_) )
     if selectTime:
         Pd = (sumXds+wt)/(sumXs+wt*nDocs)
@@ -163,15 +156,13 @@ def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 
             sys.stderr.write("iteration: "+str(it)+'\n')
         Pw_zs,Pz_d,mu,sigma= EMstep(vitals,Pw_zs,Pz_d,forLis,lambdaB,wt,selectTime,(DT,mu,sigma,forLit))
         if Pw_zs==None:
-            sys.stderr.write('Pw_zs is None\n')
-            return None
+            return None, None, None, None, None, None
         forLis = []
         for i in range(numX):
             _,docind,wordind,value = vitals[i]        
             Pw_d, Pz_dw_ = compute_Pw_d(wordind,docind,Pw_zs[i],Pz_d)
             if  Pw_d is None:
-                sys.stderr.write('Pw_d is None\n')
-                return None
+                return None, None, None, None, None, None
             forLis.append( (Pw_d, Pz_dw_) )
         if selectTime:
             forLit = compute_Pt_d(Pz_d,mu,sigma,DT) 
@@ -186,5 +177,5 @@ def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 
     if debug == 1:
         print Li[-1]
         sys.stderr.write(str(Li[-1])+'\n')
-    return Descriptor(Pw_zs,Pz_d,Pd,mu,sigma,Li)
+    return Pw_zs,Pz_d,Pd,mu,sigma,Li
 
