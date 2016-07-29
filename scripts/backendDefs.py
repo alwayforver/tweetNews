@@ -84,7 +84,8 @@ class News:
 
 
 class Tweet:
-    def __init__(self,ID,raw_text,created_at,is_retweet,retweet_count,hash_tags):
+    def __init__(self,ID,raw_text,created_at,is_retweet,retweet_count,hash_tags,
+            pop=1,tokens=None,tokens_ent=None,dupIDs=None,repID=None):
         self.ID = ID
         self.raw_text = raw_text
         try: 
@@ -95,6 +96,14 @@ class Tweet:
         self.is_retweet = is_retweet
         self.retweet_count = retweet_count
         self.hash_tags = hash_tags
+        self.pop = pop
+        self.tokens = tokens
+        self.tokens_ent=tokens_ent
+        if dupIDs is None:
+            self.dupIDs = set()
+        else:
+            self.dupIDs = dupIDs 
+        self.repID = repID
     local_time_zone = None
     newsID = None
     def _tz(self, tz):

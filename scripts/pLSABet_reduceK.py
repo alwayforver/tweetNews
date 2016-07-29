@@ -109,7 +109,7 @@ def pLSABet(Xs,inits,lambdaB=0.5,selectTime=0,DT=[],wt=0.5,Learn=(1,10),debug = 
             sigma[sigma==0] = 1e-7
             if debug == 1:
                 sys.stderr.write("zeros in sigma\n")        
-            return None
+            #return None ####
     nDocs = Xs[0].shape[0]
 # initializing...
     Pz_d = inits.Pz_d

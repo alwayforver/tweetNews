@@ -1,0 +1,70 @@
+import operator
+import codecs
+import glob
+import backendDefs as bk
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.preprocessing import normalize
+from time import time
+
+import numpy as np
+import sys,os
+
+import pLSABet_reduceK as pLSABet
+import pickle
+from eknot_utils import printNewsCluster,printNewsClusterStats,getStats,printNewsClusterText,weightX,selectTopic,init_all,run,subRun
+from eknot_utils import EventNode
+from utils import loadPickle
+sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
+sys.stdin = codecs.getwriter('utf-8')(sys.stdin)
+
+
+if __name__ == "__main__":
+    tweetPre = sys.argv[3]
+    switch = sys.argv[4]
+    [Xs,vects,DT,ind2obj] = loadPickle(sys.argv[1])
+    rootParams,rootNodeDescriptor = loadPickle(sys.argv[2])
+    rootNode = EventNode(Xs,params=rootParams,descriptor=rootNodeDescriptor)
+    
+    data = []
+    for i in range(len(Xinds)):
+        data.append(ws[i]*Xs[Xinds[i]])
+    data = data+[DT]
+    
+    Pws,Lw_zs,Sws = getStats(Xs,Xinds,Pw_zs,Pz_d,Pd,K)
+    sys.stderr.write('Printing...\n')
+
+    ######### sub ###########
+    ########### run once ############
+    numX = len(rootParams.Xinds) 
+    
+    n_wdxPz_wds = []
+    for dim in range(numX):
+        n_wdxPz_wds.append(weightX(rootParams.ws[dim]*Xs[rootParams.Xinds[dim]],
+            rootNodeDescriptor.Pw_zs[dim],
+            rootNodeDescriptor.Pz_d) )
+    ###################### step 1  select topic ###############
+    eventID = sys.argv[5] # event number
+    Kevent=sys.argv[6]
+    params = NodeParams(Xinds,ws,lambdaB,selectTime,wt,Learn,eventID)
+
+
+    Xeventinds = range(numX)
+    wsEvent = np.ones(numX)
+    selectTimeEvent = 1
+    wtEvent = 0.5
+    lambdaBevent = 0.5
+    LearnEvent=(1,10)
+    # Xs To do
+    Xevents,dID,DTevent,initsEvent,labelsEvent,centersEvent,\
+            Pw_zsEvent,Pz_dEvent,PdEvent,muEvent,sigmaEvent,LiEvent\
+            = subrun(eventID,Xs,DT,n_wdxPz_wds,Xeventinds,wsEvent,\
+                    selectTimeEvent,wtEvent,lambdaBevent,LearnEvent)
+    #################################################################################
+    # print topics
+    t_topK=10000
+    tweetPre=sys.argv[]
+    fromPlsa = True # To do
+    printStatsText(Xevents,Xeventinds,Pw_zsEvent,Pz_dEvent,PdEvent,Kevent,vects,ind2obj,dID,
+        t_topK,tweetPre,switch,fromPlsa)
+

@@ -3,9 +3,7 @@ import pickle
 from eknot_utils import EventNode,NodeParams
 from utils import loadPickle
 
-# 4 argv
-if __name__ == "__main__":
-    # data_pickle inits_pickle tweetPre out_plsa_pickle
+def main():
     [Xs,vects,DT,ind2obj] = loadPickle(sys.argv[1])
     [inits,labels,centers] = loadPickle(sys.argv[2])
     tweetPre=sys.argv[3]
@@ -37,4 +35,10 @@ if __name__ == "__main__":
             pickle.dump([params,rootNode.descriptor],f)          
     ########### print #######
     sys.stderr.write('After pickle, printing...\n')
-    rootNode.printCluster(vects,ind2obj,tweetPre=tweetPre)
+    if len(sys.argv)>5:
+        rootNode.printCluster(vects,ind2obj,tweetPre=tweetPre)
+
+# 4 argv
+if __name__ == "__main__":
+    # data_pickle inits_pickle tweetPre out_plsa_pickle PRINT
+    main()

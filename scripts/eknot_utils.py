@@ -9,10 +9,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from scipy.stats import entropy
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix,csr_matrix
 import numpy as np
 import sys,os
+from utils import dbpedia,parseEntity,my_tokenizer,tweet_tokenizer,news_tokenizer,rep1,rep2,processTextEnt,processText,grep_ent
 DEBUG=1
+import nltk.data
+sent_detector = nltk.data.load('tokenizers/punkt/english.pickle')
 
 def calc_Pw_z(labels, X, K):
 #    X = X.tocsr()
@@ -39,15 +42,13 @@ def printTerms(M,terms,wordInd,i):
         sys.stdout.write('\t'+terms[wordInd[j,i]].split('_|')[0])
     sys.stdout.write('\n')
 
-def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
+def getRelTweets(newsID,dtpure,tweetPre,tweetsObj):
     t_path = glob.glob(tweetPre+dtpure+"/"+str(newsID)+"_*")
     if len(t_path) != 1:
         print('no tweets for news ',newsID,'len(t_path)',len(t_path))
-        return ([],[])
+        return
     if os.path.exists(t_path[0]):
         t = codecs.open(t_path[0], encoding = 'utf-8') 
-    tweets = []
-    tweetsObj = []
 # stupid redundancy
     for line in t:
         fields = line.strip().split("\t")
@@ -61,6 +62,9 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
             ID = int(ID)
         except:
             continue
+
+        if ID in tweetsObj or len(raw_text.split())<=5:
+            continue
         try:
             is_retweet=bool(is_retweet)
         except:
@@ -72,30 +76,80 @@ def getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet):
         # convert url to http    
         if raw_text.split()[-1].startswith('http'):
             raw_text = raw_text.split('http')[0] + 'http'
-        #if "http" not in raw_text and "RT @" not in raw_text \
         raw_text=unidecode.unidecode(raw_text)
-        if not raw_text.startswith('RT @') \
-            and ID not in tweetIDset and raw_text not in tweetSet:
-            tweet = bk.Tweet(ID,raw_text,created_at,is_retweet,retweet_count,hash_tags)
-            tweetsObj.append(tweet)
-            tweets.append(raw_text)
-            tweetIDset.add(ID)
-            tweetSet.add(raw_text)
+        tweet = bk.Tweet(ID,raw_text,created_at,is_retweet,retweet_count,hash_tags,pop=1)
+        tweetsObj[ID] = tweet
     t.close()
-    return (tweets,tweetsObj)
 
-def rankTweets(tweets, tweetsObj, newsVec, vocab, t_topK):
-    tweetVectorizer = TfidfVectorizer(max_df=0.5,
-                                 min_df=2, stop_words='english',
-                                 vocabulary=vocab)
+def dedupTweets(tweetsObj,vocab):
+    tweetVectorizerBinary = TfidfVectorizer(stop_words='english',vocabulary=vocab,binary=True,
+            tokenizer=lambda text: tweet_tokenizer(text,'reg'))
+    i2ID = {}
+    tweets = []
+    i=0
+    for tID in tweetsObj:
+        tweets.append(tweetsObj[tID].raw_text)
+        i2ID[i] = tID
+        i+=1
+    X = tweetVectorizerBinary.fit_transform(tweets)
+
+    indices = X.indices
+    indptr = X.indptr
+    tweetsObjDedup = {}
+    signatures = {}
+    count = 0 
+    for i in range(X.shape[0]):
+        if indptr[i+1] - indptr[i] <= 5:
+            continue
+        inds = indices[indptr[i]:indptr[i+1]]
+        sig = inds.tostring()
+        tID = i2ID[i]
+        if sig not in signatures:
+            signatures[sig] = tID
+            tweetsObjDedup[tID] = tweetsObj[tID]
+            tweetsObjDedup[tID].tokens = [vocab[ind] for ind in inds]
+        else:
+            tID_exist = signatures[sig]
+            tweetsObjDedup[tID_exist].pop += 1
+            tweetsObjDedup[tID_exist].dupIDs.add(tID)
+        count +=1
+        if count%5000==1:            
+            sys.stderr.write('Dedup...'+str(count)+'\n')
+    # dbpedia get ent
+    for tID in tweetsObjDedup:
+        t = tweetsObjDedup[tID]
+        t.tokens_ent = unidecode.unidecode(processTextEnt(t.raw_text))
+        t.repID = tID
+        if 'RT @' not in t.raw_text:
+            continue
+        for duptID in t.dupIDs:
+            trep = tweetsObj[duptID]
+            if 'RT @' not in trep.raw_text:
+                t.repID = duptID
+                trep.tokens_ent = unidecode.unidecode(processTextEnt(trep.raw_text))
+                break
+    return tweetsObjDedup            
+
+    
+def rankTweets(tweetsObj, newsVec, vocab):
+    tweetVectorizer = TfidfVectorizer(stop_words='english',vocabulary=vocab,use_idf=False,
+            tokenizer=lambda text: tweet_tokenizer(text,'reg'))
+    tweetsScore = {}
+    tweets = []
+    i2ID = {}
+    i = 0
+    for tID in tweetsObj:
+        tweets.append(tweetsObj[tID].raw_text)
+        i2ID[i] = tID
+        i+=1
     X = tweetVectorizer.fit_transform(tweets)
     scores = X.dot(newsVec)
-    tweetsInd = scores.argsort()[::-1][:t_topK]
-    topTweetsObj = [tweetsObj[i] for i in tweetsInd]
-    topTweetsScore = {}
-    for i in tweetsInd:
-        topTweetsScore[tweetsObj[i].ID] = scores[i]
-    return topTweetsObj,topTweetsScore
+    for i in range(len(tweetsObj)):
+        tweetsScore[i2ID[i]] = scores[i]
+    #tweetsInd = scores.argsort()[::-1][:t_topK]
+    #for i in tweetsInd:
+    #    topTweetsScore[i2ID[i]] = scores[i]
+    return tweetsScore
 
    
 def printTermsStats(M,terms,wordInd,score_w_z,i,Pw,Lw_z,Sw,Pw_z):
@@ -120,15 +174,11 @@ def printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs
    
 def printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_d,docInd,dID=[]):
     print "Cluster: ",i
-    tweets = []
-    tweetsObj = []
+    sys.stderr.write("Cluster: "+str(i)+'\n')
     M = 50 # max number of terms to output
     N = 1000 # max number of news output
-    tweetIDset = set()
-    tweetSet = set()
     resDocInd = [] # index in X and ind2obj
-    resTweetCount = 0 # max index in tweetsObj
-
+    tweetsObj = {}
     for k in range(min(N,docInd.shape[1])):
         docIDinX = docInd[i,k]
         news_cosine= cosine_d_z[docIDinX,i]
@@ -142,32 +192,46 @@ def printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_z,Pz_
             news = ind2obj[dID[docIDinX]]
             resDocInd.append(dID[docIDinX])
 
-        #print "NEWS-- "+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+str(news.created_at)+'\t'+news.title)+'\t'+news.raw_text.split('.')[0]
-        print "NEWS--"+str(i)+"\t"+news.ID+"\t"+str(news_cosine)+"\t"+str(news_topic_score)+"\t"+'\t'+news.title+'\t'+' '.join(news.raw_text.encode('utf-8').split()[0:60])
+        print "NEWS--" + '\t'.join([str(i), news.ID, str(news_cosine), 
+            str(news_topic_score),str(news.created_at),news.title, news.raw_text.encode('utf-8')[:200] ])
 
-        #print("-------")
         if tweetPre == 'null':
             continue
-        newsID = news.ID
-        dtpure = news.dtpure
-        addtweets,addtweetsObj = getRelTweets(newsID,dtpure,tweetPre,tweetIDset,tweetSet)           
-        tweets = tweets + addtweets
-        tweetsObj = tweetsObj + addtweetsObj
-    if tweetPre != 'null' and tweets:
+        getRelTweets(news.ID,news.dtpure,tweetPre,tweetsObj)
+        sys.stderr.write("*******current tl tweets: "+str(len(tweetsObj))+'\n')
+    if not tweetsObj:
+        return resDocInd,None,None
+    
+    sys.stderr.write('Dedup Tweets...\n')
+    tweetsObjDedup = dedupTweets(tweetsObj,termsList[0])
+    print("*******after dedup: "+str(len(tweetsObjDedup)))
+    sys.stderr.write("*******after dedup: "+str(len(tweetsObjDedup))+'\n')
+    print("*******total tweets: "+str(len(tweetsObj)))
+    sys.stderr.write("*******total tweets: "+str(len(tweetsObj))+'\n')
+    if tweetPre != 'null' and tweetsObjDedup:
         newsCenter = Pw_z[:,i]
-        topTweetsObj,topTweetsScore = rankTweets(tweets,tweetsObj, newsCenter, termsList[0],t_topK)
-        print("*******total tweets: "+str(len(tweets)))
+        tweetsScore = rankTweets(tweetsObjDedup, newsCenter, termsList[0])
         print("top tweets:")
-        # for t in sorted(topTweetsObj, key=operator.attrgetter('created_at')): # sort by time
-        
-        for t in topTweetsObj: # sort by cosine score
-            if topTweetsScore[t.ID] > 0.001:
-                print("TWEET--"+str(i)+"\t"+str(topTweetsScore[t.ID])+"\t"+str(t.created_at)+"\t" + t.raw_text )
-                resTweetCount+=1
+        count = 0
+        for tID_score in sorted(tweetsScore.items(), key=operator.itemgetter(1),reverse=True):
+            tScore = tID_score[1]
+            if tScore > 0.001:
+                tID = tID_score[0]
+                t = tweetsObjDedup[tID]
+                print "TWEET--"+ '\t'.join([ str(i), str(tID), str(tScore), 
+                    str(t.pop), str(t.created_at), t.raw_text, t.tokens_ent,
+                    tweetsObj[t.repID].raw_text, 
+                    tweetsObj[t.repID].tokens_ent, 
+                    str(t.tokens) ])
+                count += 1
+                if t_topK>0 and count >= t_topK:
+                    break
+            else:
+                break
     else:
         print("no tweets retrieved")
     print("=========")
-    return resDocInd,resTweetCount,topTweetsObj,topTweetsScore
+    return resDocInd,tweetsObj,tweetsObjDedup,tweetsScore
 
 def getStats(Xs,Xinds,Pw_zs,Pz_d,Pd,K):
     t0 = time()
@@ -389,7 +453,7 @@ class EventNode:
                 printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,self.dID)
 
     # to do
-    def printSumCluster(self,vects,ind2obj,
+    def printCluster_i(self,vects,ind2obj,i,
             t_topK=10000,tweetPre='null',switch='text',fromPlsa=True):
         desc = self.descriptor if fromPlsa else self.initsDescriptor
         Pw_zs = desc.Pw_zs
@@ -414,10 +478,264 @@ class EventNode:
         if switch == 'text':
             cosine_d_z = self.Xs[0].dot(Pw_zs[0])
             docInd = cosine_d_z.T.argsort()[:,::-1]
-        for i in range(K):
-            printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs)
-            if switch == 'text':
-                printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,self.dID)
-        # print summary
-        relNews = getRel
-        #relTweets = 
+        # print i
+        printNewsClusterStats(i,termsList,wordIndList,score_w_zs,Pws,Lw_zs,Sws,Pw_zs)
+        if switch == 'text':
+            resDocInd,tweetsObj,tweetsObjDedup,tweetsScore = printNewsClusterText(i,termsList,ind2obj,t_topK,tweetPre,cosine_d_z,Pw_zs[0],Pz_d,docInd,self.dID)
+        return resDocInd,tweetsObj,tweetsObjDedup,tweetsScore
+
+
+def getEntInd(evocab,Pe_z,topK):
+    ent_ind = {}
+    inds = Pe_z.argsort()[::-1][:topK]
+    ents = []
+    count = 0
+    for i in inds:
+        ent_ind[evocab[i]] = count
+        ents.append(evocab[i])
+        count+=1
+    return ent_ind,ents
+def getEntScore(evocab,Pe_z,topK):
+    score = {}
+    inds = Pe_z.argsort()[::-1][:topK]
+    ents = []
+    for i in inds:
+        score[evocab[i]] = Pe_z[i]
+        ents.append(evocab[i])
+    return score,ents
+
+def makeEntText(sentence,ent_text,ent_ind,indices,indptr,window):
+    if len(sentence) < 50: # or len(sentence)>140:
+        return ''
+    sentence = sentence.lower()
+    ents = grep_ent(sentence,True,True,True,True).split()
+#    if not ents:
+#        return ''
+    s = grep_ent(sentence,False,False,False,False)
+    if len(s) < 50:
+        return ''
+    count = 0
+    
+    half = window//2
+    prev = 0
+    for e in ents:        
+#        e = e.lower()
+        if e in ent_text:            
+            cur = sentence.find(e,prev)
+            context = ' '.join(sentence[:cur].split()[-half:] + \
+                    sentence[cur:].split()[0:half+1])
+            s_context = grep_ent(context,False,False,False,False)
+            prev = cur+1
+
+            indices.append(ent_ind[e])
+            ent_text[e] += ' '
+            ent_text[e] += s_context
+            count += 1
+#    if count:      
+    last = indptr[-1]
+    indptr.append(last+count)
+    return s
+#    else:
+#        return ''
+
+
+def makeEntTextOld(sentence,ent_text,ent_ind,indices,indptr):        
+    if len(sentence) < 50: # or len(sentence)>140:
+        return ''
+    ents = grep_ent(sentence,True,True,True,True).split()
+    if not ents:
+        return ''
+    s = grep_ent(sentence,False,False,False,False)
+    if len(s) < 50:
+        return ''
+    count = 0
+    for e in ents:
+        e = e.lower()
+        if e in ent_text:            
+            indices.append(ent_ind[e])
+            ent_text[e] += ' '
+            ent_text[e] += s
+            count += 1
+    if count:      
+        last = indptr[-1]
+        indptr.append(last+count)
+        return s
+    else:
+        return ''
+
+class Sentence:
+    def __init__(self,raw_text,created_at='',tokens_ent='',title=''):
+        self.raw_text=raw_text
+        self.created_at = created_at
+        self.tokens_ent = tokens_ent
+        self.title = title
+class SentenceOld:
+    def __init__(self,raw_text,created_at='',tokens_ent='',title=''):
+        self.raw_text=raw_text
+        self.created_at = created_at
+        self.tokens_ent = tokens_ent
+        self.title = title
+def getNewsContext(newsObj,ent_ind,ents,vocab,window):          
+    ent_text = {}
+    for e in ent_ind:
+        ent_text[e] = ''
+
+    sentencesIn = []            
+    sentencesInObj= []            
+    entsIn = []
+
+    # binary matrix
+    
+    indices = []
+    indptr = [0]
+    for news in newsObj:
+        h_ent = news.h_ent
+        s = makeEntText(h_ent,ent_text,ent_ind,indices,indptr,window)
+        if s:
+            sentencesIn.append( s )
+            sentencesInObj.append(Sentence(s,news.created_at,h_ent,news.title))
+        b_ent = news.b_ent
+        for sentence in sent_detector.tokenize(b_ent.strip()):
+            s = makeEntText(sentence,ent_text,ent_ind,indices,indptr,window)
+            if s:
+                sentencesIn.append( s )
+                sentencesInObj.append(Sentence(s,news.created_at,sentence,news.title))
+    newsVectorizer = TfidfVectorizer(stop_words='english',vocabulary=vocab,#use_idf=False,
+        tokenizer=lambda text: news_tokenizer(text,'reg'))
+    XN = newsVectorizer.fit_transform(sentencesIn) #
+
+    for e in ents:
+        entsIn.append(ent_text[e])
+    XEn = newsVectorizer.fit_transform(entsIn)    
+
+    NEb = csr_matrix((np.ones(len(indices)), indices, indptr), shape=(len(sentencesIn),len(ents) ))
+    return XN,XEn,NEb,sentencesIn,sentencesInObj,ent_text
+
+def getTweetContext(tweetsObj,ent_ind,ents,vocab,window):          
+    ent_text = {}
+    for e in ent_ind:
+        ent_text[e] = ''
+
+    t0 = time()
+    tweetsIn = []            
+    tweetsInObj = []            
+    entsIn = []
+    indices = []
+    indptr = [0]
+    for i in tweetsObj:
+        tweet = tweetsObj[i]
+        tokens_ent = tweet.tokens_ent
+        t = makeEntText(tokens_ent,ent_text,ent_ind,indices,indptr,window)
+        if t:
+            tweetsIn.append( t )
+            tweetsInObj.append( tweet )
+
+    print( "append in "+str(time() - t0))
+    t0 = time()
+    tweetVectorizer = TfidfVectorizer(stop_words='english',vocabulary=vocab,#use_idf=False,
+        tokenizer=lambda text: tweet_tokenizer(text,'reg'))
+    XT = tweetVectorizer.fit_transform(tweetsIn) 
+    print( "vectorize in "+str(time() - t0))
+    t0 = time()
+    for e in ents:
+        entsIn.append(ent_text[e])
+    XEt = tweetVectorizer.fit_transform(entsIn)    
+    print( "ents append + vec in "+str(time() - t0))
+
+    TEb = csr_matrix((np.ones(len(indices)), indices, indptr), shape=(len(tweetsIn),len(ents) ))
+    return XT,XEt,TEb,tweetsIn,tweetsInObj,ent_text
+def softmax(X):
+    indices,indptr,data=X.indices,X.indptr,X.data
+    for i in range(len(indptr)-1):
+        if indptr[i] == indptr[i+1]:  # To Do: deal with sentences that do not linkt to any ent
+            continue            
+        rowdata = data[indptr[i]:indptr[i+1]]
+        rowdata = np.exp(rowdata-max(rowdata))
+        data[indptr[i]:indptr[i+1]] = rowdata
+def normBypartite_exp(X):
+    Xexp = X.copy()
+    softmax(Xexp)
+    Xexp2 = Xexp.tocsc().T
+    softmax(Xexp2)
+    Xexp2 = Xexp2.T
+
+    Xexp.data -= max(Xexp.data)
+    Xexp = Xexp.expm1()
+    Xexp.data+=1
+    
+    res1 = normalize(Xexp,axis=1,norm='l1')
+    res2 = normalize(Xexp2,axis=0,norm='l1').T
+    return res1,res2
+def normBypartite(X):
+    res1 = normalize(X,axis=1,norm='l1')
+    res2 = normalize(X,axis=0,norm='l1').T
+    return res1,res2
+
+def printSummary(nScore,tScore,sentences,sentencesObj,tweets,tweetsObj,K):
+    nind = nScore.argsort()[::-1][:K]
+    tind = tScore.argsort()[::-1][:K]
+    for i in nind:
+        sobj = sentencesObj[i]
+        print i,nScore[i],sobj.created_at,sentences[i],'|',sobj.title
+    print "------"
+    for i in tind:
+        tobj = tweetsObj[i]
+        print i,tScore[i],tobj.pop,tobj.created_at,tweets[i],'|',tobj.tokens_ent,tobj.tokens
+def maxScore(X,exist,i):
+    if not exist:
+        return 0
+    ind = np.array(exist)
+    score = X[ind,:].dot(X[i,:].T)
+    if score.nnz==0:
+        return -1
+    else:
+        return max(score.data)
+    
+def printSummaryOne(nScore,sentences,sentencesObj,X,K,b=0.3,debug=0,outfile=None):    
+    nind = nScore.argsort()[::-1]
+    exist = []
+    count = 0
+    for i in nind:
+        if maxScore(X,exist,i) > b or maxScore(X,exist,i) < 0 \
+                or len(sentences[i])>250:# or len(sentences[i])<50:
+
+            if debug:
+                print 'skip',maxScore(X,exist,i),len(sentences[i])
+            continue        
+        if debug:
+            print maxScore(X,exist,i)
+        sobj = sentencesObj[i]
+        if debug:
+            print i,nScore[i],sobj.pop if hasattr(sobj,'pop') else '',sobj.created_at,sentences[i]
+        else:
+            if outfile is not None:
+                str1 = str(sobj.pop) if hasattr(sobj,'pop') else ''
+                str2 = ' '.join(sentences[i].split('http')[:-1]) if sentences[i].endswith('http') else sentences[i]
+                out = str1 + ' ' + str2+'\n'
+                outfile.write(out)
+            else:
+                print sobj.pop if hasattr(sobj,'pop') else '',\
+                    ' '.join(sentences[i].split('http')[:-1]) if sentences[i].endswith('http') else sentences[i]
+        exist.append(i)
+        count+=1
+        if count == K:
+            break
+def printRankedEnt(score,ents,K,DISPLAY=False):
+    ind = score.argsort()[::-1][:K]
+    count = 0
+    res = {}
+    for i in ind:
+        if DISPLAY:
+            print i-count,i,score[i],ents[i]
+        res[ents[i]] = i-count
+        count +=1
+    return res    
+
+    
+def printDictByValue(score,K,reverse=True):
+    count = 0
+    for i in sorted(score.items(), key=operator.itemgetter(1),reverse=reverse):
+        print i[1],i[0]
+        count+=1
+        if count == K:
+            break
